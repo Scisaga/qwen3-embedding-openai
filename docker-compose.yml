@@ -8,9 +8,6 @@ services:
     environment:
       MODEL_ID: "Qwen/Qwen3-Embedding-8B"
       # MODEL_REVISION: "main"
-      # 选卡：宿主机第 1 张卡写 "0"，第 2 张卡写 "1"
-      # 容器内只会看到这里暴露的 GPU
-      NVIDIA_VISIBLE_DEVICES: "0"
       HOST: "0.0.0.0"
       PORT: "12302"
       VLLM_HOST: "127.0.0.1"
@@ -34,5 +31,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              # 选卡：宿主机第 1 张卡写 "0"，第 2 张卡写 "1"
+              # 当前固定绑定宿主机第 2 张卡
+              device_ids: ["1"]
               capabilities: [gpu]
