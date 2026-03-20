@@ -8,7 +8,7 @@ from embedding_service import PRELOAD_MODEL, _apply_proxy_env
 
 def main() -> None:
     host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "12301"))
+    port = int(os.getenv("PORT", "12302"))
     _apply_proxy_env()
 
     if PRELOAD_MODEL:

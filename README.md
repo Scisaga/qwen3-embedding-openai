@@ -25,14 +25,14 @@ HTTP_PROXY=http://127.0.0.1:7890
 ```
 
 打开：
-- Web UI：http://localhost:12301/
-- MCP HTTP：http://localhost:12301/mcp
-- 接口文档（Swagger）：http://localhost:12301/docs
-- 接口文档（ReDoc）：http://localhost:12301/redoc
-- 健康检查：http://localhost:12301/health
+- Web UI：http://localhost:12302/
+- MCP HTTP：http://localhost:12302/mcp
+- 接口文档（Swagger）：http://localhost:12302/docs
+- 接口文档（ReDoc）：http://localhost:12302/redoc
+- 健康检查：http://localhost:12302/health
 
 ## 架构说明
-- **对外端口**：`PORT=12301`
+- **对外端口**：`PORT=12302`
 - **容器内 vLLM**：默认监听 `127.0.0.1:8001`
 - **工作方式**：外层 FastAPI 接收请求，必要时注入 Qwen query instruction，然后转发给容器内的 `vLLM` 子进程
 - **自动下载**：首次启动时若本地缓存不存在模型，`vLLM` 会自动从 Hugging Face 拉取 `MODEL_ID`
@@ -40,7 +40,7 @@ HTTP_PROXY=http://127.0.0.1:7890
 这意味着你平时只需要访问：
 
 ```text
-http://localhost:12301/v1/embeddings
+http://localhost:12302/v1/embeddings
 ```
 
 不需要直接访问容器内的 `8001` 端口。
@@ -51,7 +51,7 @@ http://localhost:12301/v1/embeddings
 from openai import OpenAI
 
 client = OpenAI(
-    base_url="http://localhost:12301/v1",
+    base_url="http://localhost:12302/v1",
     api_key="dummy",
 )
 
@@ -70,7 +70,7 @@ print(len(response.data[0].embedding))
 
 ## curl 示例
 ```bash
-curl http://localhost:12301/v1/embeddings \
+curl http://localhost:12302/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
     "model": "Qwen/Qwen3-Embedding-8B",
@@ -113,7 +113,7 @@ Query:{text}
 服务启动后，MCP Streamable HTTP 入口固定为：
 
 ```text
-http://localhost:12301/mcp
+http://localhost:12302/mcp
 ```
 
 适合远端客户端或通过网关统一接入的场景。
@@ -142,7 +142,7 @@ http://localhost:12301/mcp
 ```bash
 docker run -d --name qwen3_embedding_openai \
   --gpus all \
-  -p 12301:12301 \
+  -p 12302:12302 \
   -e MODEL_ID="Qwen/Qwen3-Embedding-8B" \
   -e NVIDIA_VISIBLE_DEVICES="0" \
   -e HF_HOME="/models" \
@@ -159,7 +159,7 @@ docker compose up -d
 
 ## 模型热重载（无需重启）
 ```bash
-curl -X POST http://localhost:12301/admin/reload \
+curl -X POST http://localhost:12302/admin/reload \
   -H "Content-Type: application/json" \
   -H "x-admin-token: change-me" \
   -d '{
@@ -186,7 +186,7 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 在 `docker-compose.yml` 的 `environment` 里可调：
 - `MODEL_ID`：模型 ID，默认 `Qwen/Qwen3-Embedding-8B`
 - `NVIDIA_VISIBLE_DEVICES`：选卡
-- `PORT`：外层 FastAPI 端口，默认 `12301`
+- `PORT`：外层 FastAPI 端口，默认 `12302`
 - `VLLM_HOST` / `VLLM_PORT`：容器内 vLLM 监听地址，通常无需改
 - `HF_HOME`：模型缓存目录
 - `MAX_MODEL_LEN`：最大上下文长度

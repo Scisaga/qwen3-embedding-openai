@@ -4,7 +4,7 @@ services:
     container_name: qwen3_embedding_openai
     restart: unless-stopped
     ports:
-      - "12301:12301"
+      - "12302:12302"
     environment:
       MODEL_ID: "Qwen/Qwen3-Embedding-8B"
       # MODEL_REVISION: "main"
@@ -12,7 +12,7 @@ services:
       # 容器内只会看到这里暴露的 GPU
       NVIDIA_VISIBLE_DEVICES: "0"
       HOST: "0.0.0.0"
-      PORT: "12301"
+      PORT: "12302"
       VLLM_HOST: "127.0.0.1"
       VLLM_PORT: "8001"
       HF_HOME: "/models"

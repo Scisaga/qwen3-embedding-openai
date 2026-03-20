@@ -11,5 +11,5 @@ COPY mcp_server.py /app/mcp_server.py
 COPY server.py /app/server.py
 COPY static /app/static
 
-EXPOSE 12301
+EXPOSE 12302
 ENTRYPOINT ["python", "-u", "server.py"]

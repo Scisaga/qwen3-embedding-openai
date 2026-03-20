@@ -12,7 +12,7 @@ import httpx
 MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-8B")
 MODEL_REVISION = os.getenv("MODEL_REVISION")
 HOST = os.getenv("HOST", "0.0.0.0")
-PORT = int(os.getenv("PORT", "12301"))
+PORT = int(os.getenv("PORT", "12302"))
 VLLM_HOST = os.getenv("VLLM_HOST", "127.0.0.1")
 VLLM_PORT = int(os.getenv("VLLM_PORT", "8001"))
 HF_HOME = os.getenv("HF_HOME", "/models")

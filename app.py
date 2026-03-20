@@ -448,7 +448,7 @@ def create_application() -> FastAPI:
     @app.get("/openai-example", response_class=HTMLResponse)
     def openai_example() -> str:
         example = {
-            "base_url": "http://localhost:12301/v1",
+            "base_url": "http://localhost:12302/v1",
             "model": get_current_model_id(),
             "input": "hello world",
             "input_type": "query",
