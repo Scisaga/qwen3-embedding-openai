@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from typing import Any, Optional
 
 import httpx
@@ -27,6 +28,8 @@ ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 BACKEND_START_TIMEOUT = int(os.getenv("BACKEND_START_TIMEOUT", "600"))
 BACKEND_HTTP_TIMEOUT = float(os.getenv("BACKEND_HTTP_TIMEOUT", "120"))
 BACKEND_POLL_INTERVAL = float(os.getenv("BACKEND_POLL_INTERVAL", "1.0"))
+REQUEST_READY_TIMEOUT = float(os.getenv("REQUEST_READY_TIMEOUT", "3.0"))
+BACKEND_PORT_SCAN_WINDOW = int(os.getenv("BACKEND_PORT_SCAN_WINDOW", "4"))
 VLLM_EXTRA_ARGS = os.getenv("VLLM_EXTRA_ARGS", "")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "").strip()
 MANAGE_BACKEND_PROCESS = (
@@ -148,6 +151,34 @@ def _mark_backend_not_ready(message: str = "") -> None:
         _backend_last_error = message
 
 
+def _backend_state(healthy: bool, process_alive: bool, exit_code: Optional[int]) -> str:
+    if healthy:
+        return "ready"
+    if process_alive:
+        return "starting"
+    if exit_code is not None:
+        return "exited"
+    return "stopped"
+
+
+def _backend_message(
+    healthy: bool,
+    process_alive: bool,
+    exit_code: Optional[int],
+    probe_message: str,
+) -> str:
+    if healthy:
+        return ""
+    if process_alive:
+        return (
+            "vLLM 进程已启动，但健康检查尚未就绪。"
+            "这通常表示模型仍在加载权重到 GPU，或内部 engine 仍在初始化。"
+        )
+    if exit_code is not None:
+        return _backend_last_error or f"vLLM exited with code {exit_code}."
+    return _backend_last_error or probe_message or "Backend is not reachable."
+
+
 def _start_backend_process_locked() -> None:
     global _backend_process, _backend_started_at, _backend_last_error, _backend_ready
 
@@ -201,20 +232,34 @@ def _stop_backend_process_locked() -> None:
 
 async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
     timeout = httpx.Timeout(5.0, connect=2.0)
-    base_url = _settings.backend_base_url.rstrip("/")
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.get(f"{base_url}/health")
-        if response.status_code >= 400:
-            return False, None, f"vLLM health returned HTTP {response.status_code}"
-        payload: Optional[dict[str, Any]]
-        try:
-            payload = response.json()
-        except ValueError:
-            payload = None
-        return True, payload, ""
-    except httpx.HTTPError as exc:
-        return False, None, str(exc)
+    ports_to_try = [_settings.backend_port]
+    for offset in range(1, max(1, BACKEND_PORT_SCAN_WINDOW) + 1):
+        ports_to_try.append(_settings.backend_port + offset)
+
+    last_message = ""
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for port in ports_to_try:
+            base_url = f"http://{_settings.backend_host}:{port}"
+            try:
+                response = await client.get(f"{base_url}/health")
+            except httpx.HTTPError as exc:
+                last_message = str(exc)
+                continue
+
+            if response.status_code >= 400:
+                last_message = f"vLLM health returned HTTP {response.status_code}"
+                continue
+
+            payload: Optional[dict[str, Any]]
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = None
+
+            _settings.backend_base_url = base_url
+            return True, payload, ""
+
+    return False, None, last_message or "All connection attempts failed"
 
 
 async def wait_for_backend_ready(timeout_s: Optional[float] = None) -> None:
@@ -255,11 +300,11 @@ async def wait_for_backend_ready(timeout_s: Optional[float] = None) -> None:
     raise BackendUnavailableError(_backend_last_error)
 
 
-async def ensure_backend_started(wait_ready: bool = True) -> None:
+async def ensure_backend_started(wait_ready: bool = True, timeout_s: Optional[float] = None) -> None:
     with _backend_lock:
         _start_backend_process_locked()
     if wait_ready:
-        await wait_for_backend_ready()
+        await wait_for_backend_ready(timeout_s=timeout_s)
 
 
 async def maybe_preload_backend() -> None:
@@ -397,7 +442,15 @@ async def _post_embeddings(payload: dict[str, Any]) -> dict[str, Any]:
 async def create_embeddings(request_payload: dict[str, Any]) -> dict[str, Any]:
     global _backend_ready
     backend_payload = prepare_backend_payload(request_payload)
-    await ensure_backend_started(wait_ready=True)
+    try:
+        await ensure_backend_started(wait_ready=True, timeout_s=REQUEST_READY_TIMEOUT)
+    except BackendUnavailableError as exc:
+        if _backend_alive():
+            raise BackendUnavailableError(
+                "Backend is still starting and may still be loading model weights on GPU. "
+                "Please wait a bit and refresh /health."
+            ) from exc
+        raise
     response_payload = await _post_embeddings(backend_payload)
     _backend_ready = True
     return response_payload
@@ -432,61 +485,83 @@ async def get_health_payload() -> dict[str, Any]:
 
     backend_pid: Optional[int] = None
     backend_exit_code: Optional[int] = None
+    backend_process_alive = False
     with _backend_lock:
         if _backend_process is not None:
             backend_pid = _backend_process.pid
             backend_exit_code = _backend_process.poll()
+            backend_process_alive = backend_exit_code is None
+
+    backend_state = _backend_state(healthy, backend_process_alive, backend_exit_code)
+    backend_message = _backend_message(healthy, backend_process_alive, backend_exit_code, message)
 
     return {
         "status": "ok" if healthy else "degraded",
         "backend": "vllm",
         "backend_ready": healthy,
+        "backend_state": backend_state,
+        "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
-        "backend_last_error": _backend_last_error or ("" if healthy else message),
+        "backend_last_error": backend_message,
         "backend_health": backend_health,
         "model_id": _settings.model_id,
         "model_revision": _settings.model_revision,
         "port": PORT,
         "backend_port": _settings.backend_port,
         "dtype": _settings.dtype,
+        "backend_target_device": "cuda",
+        "cpu_fallback": False,
         "max_model_len": _settings.max_model_len,
         "gpu_memory_utilization": _settings.gpu_memory_utilization,
         "default_query_instruction": _settings.default_query_instruction,
         "manage_backend_process": _settings.manage_backend_process,
         "preload_model": _settings.preload_model,
         "started_at": _backend_started_at,
+        "server_time": datetime.now().astimezone().isoformat(),
+        "timezone": datetime.now().astimezone().tzname(),
     }
 
 
 def get_health_snapshot() -> dict[str, Any]:
     backend_pid: Optional[int] = None
     backend_exit_code: Optional[int] = None
+    backend_process_alive = False
     with _backend_lock:
         if _backend_process is not None:
             backend_pid = _backend_process.pid
             backend_exit_code = _backend_process.poll()
+            backend_process_alive = backend_exit_code is None
+
+    backend_state = _backend_state(_backend_ready, backend_process_alive, backend_exit_code)
+    backend_message = _backend_message(_backend_ready, backend_process_alive, backend_exit_code, "")
 
     return {
         "status": "ok" if _backend_ready else "degraded",
         "backend": "vllm",
         "backend_ready": _backend_ready,
+        "backend_state": backend_state,
+        "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
-        "backend_last_error": _backend_last_error,
+        "backend_last_error": backend_message,
         "model_id": _settings.model_id,
         "model_revision": _settings.model_revision,
         "port": PORT,
         "backend_port": _settings.backend_port,
         "dtype": _settings.dtype,
+        "backend_target_device": "cuda",
+        "cpu_fallback": False,
         "max_model_len": _settings.max_model_len,
         "gpu_memory_utilization": _settings.gpu_memory_utilization,
         "default_query_instruction": _settings.default_query_instruction,
         "manage_backend_process": _settings.manage_backend_process,
         "preload_model": _settings.preload_model,
         "started_at": _backend_started_at,
+        "server_time": datetime.now().astimezone().isoformat(),
+        "timezone": datetime.now().astimezone().tzname(),
     }
 
 

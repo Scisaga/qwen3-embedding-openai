@@ -12,6 +12,7 @@ services:
       PORT: "12302"
       VLLM_HOST: "127.0.0.1"
       VLLM_PORT: "8001"
+      TZ: "Asia/Shanghai"
       HF_HOME: "/models"
       DTYPE: "float16"
       MAX_MODEL_LEN: "32768"
