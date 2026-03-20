@@ -12,4 +12,4 @@ COPY server.py /app/server.py
 COPY static /app/static
 
 EXPOSE 12302
-ENTRYPOINT ["python", "-u", "server.py"]
+ENTRYPOINT ["python3", "-u", "server.py"]
