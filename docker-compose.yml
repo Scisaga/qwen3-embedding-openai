@@ -1,0 +1,38 @@
+services:
+  qwen3_embedding:
+    build: .
+    container_name: qwen3_embedding_openai
+    restart: unless-stopped
+    ports:
+      - "12301:12301"
+    environment:
+      MODEL_ID: "Qwen/Qwen3-Embedding-8B"
+      # MODEL_REVISION: "main"
+      # 选卡：宿主机第 1 张卡写 "0"，第 2 张卡写 "1"
+      # 容器内只会看到这里暴露的 GPU
+      NVIDIA_VISIBLE_DEVICES: "0"
+      HOST: "0.0.0.0"
+      PORT: "12301"
+      VLLM_HOST: "127.0.0.1"
+      VLLM_PORT: "8001"
+      HF_HOME: "/models"
+      DTYPE: "float16"
+      MAX_MODEL_LEN: "32768"
+      GPU_MEMORY_UTILIZATION: "0.92"
+      DEFAULT_QUERY_INSTRUCTION: "Given a web search query, retrieve relevant passages that answer the query"
+      PRELOAD_MODEL: "1"
+      ADMIN_TOKEN: "change-me"
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      # 可选：追加给 vLLM 的参数，例如张量并行或 trust-remote-code
+      # VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
+    volumes:
+      - ./models:/models
+    ipc: host
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
