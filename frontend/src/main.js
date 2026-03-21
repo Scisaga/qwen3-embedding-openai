@@ -71,7 +71,7 @@ Shanghai is a major financial center in China.</textarea>
         <button class="secondary" id="homeBtn">Back To Console</button>
       </div>
 
-      <div class="hint">交互：左键拖拽旋转，滚轮缩放，右键拖拽平移。每个点显示编号标签。</div>
+      <div class="hint">交互：左键拖拽旋转，滚轮缩放，右键拖拽平移。显示原点与“原点→点”箭头连线，并标注每个点编号。</div>
     </aside>
 
     <main class="panel center">
@@ -325,6 +325,100 @@ function ensurePlotEvents() {
   state.plotEventsBound = true;
 }
 
+function buildOriginRayLineTrace() {
+  const x = [];
+  const y = [];
+  const z = [];
+  for (const point of state.plotPoints) {
+    x.push(0, point.x, null);
+    y.push(0, point.y, null);
+    z.push(0, point.z, null);
+  }
+  return {
+    type: "scatter3d",
+    mode: "lines",
+    x,
+    y,
+    z,
+    hoverinfo: "skip",
+    line: {
+      color: "rgba(56,189,248,0.45)",
+      width: 3,
+    },
+  };
+}
+
+function buildOriginRayArrowTrace() {
+  const x = [];
+  const y = [];
+  const z = [];
+  const u = [];
+  const v = [];
+  const w = [];
+
+  for (const point of state.plotPoints) {
+    const length = Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
+    if (length < 1e-6) continue;
+    const ux = point.x / length;
+    const uy = point.y / length;
+    const uz = point.z / length;
+    const arrowLength = Math.min(0.18, Math.max(0.09, length * 0.28));
+    x.push(point.x);
+    y.push(point.y);
+    z.push(point.z);
+    u.push(ux * arrowLength);
+    v.push(uy * arrowLength);
+    w.push(uz * arrowLength);
+  }
+
+  if (!x.length) return null;
+  return {
+    type: "cone",
+    x,
+    y,
+    z,
+    u,
+    v,
+    w,
+    anchor: "tip",
+    hoverinfo: "skip",
+    showscale: false,
+    sizemode: "absolute",
+    sizeref: 0.12,
+    colorscale: [
+      [0, "#22d3ee"],
+      [1, "#22d3ee"],
+    ],
+    lighting: {
+      ambient: 0.72,
+      diffuse: 0.9,
+      specular: 0.28,
+      roughness: 0.45,
+      fresnel: 0.25,
+    },
+  };
+}
+
+function buildOriginTrace() {
+  return {
+    type: "scatter3d",
+    mode: "markers+text",
+    x: [0],
+    y: [0],
+    z: [0],
+    text: ["Origin"],
+    textposition: "top center",
+    textfont: { size: 12, color: "#67e8f9" },
+    hovertemplate: "Origin (0, 0, 0)<extra></extra>",
+    marker: {
+      size: Math.max(6, state.pointSize + 3),
+      color: "#22d3ee",
+      line: { width: 1.2, color: "rgba(8,47,73,0.95)" },
+      opacity: 1,
+    },
+  };
+}
+
 async function render3DPlot(selectedIndex = null) {
   if (!state.plotPoints.length) {
     Plotly.purge(els.plot);
@@ -339,28 +433,33 @@ async function render3DPlot(selectedIndex = null) {
   const text = state.plotPoints.map((item) => `#${item.index}`);
   const customdata = state.plotPoints.map((item) => item.index);
   const hovertext = state.plotPoints.map((item) => item.text || `#${item.index}`);
+  const originRayLineTrace = buildOriginRayLineTrace();
+  const originRayArrowTrace = buildOriginRayArrowTrace();
+  const originTrace = buildOriginTrace();
 
-  const data = [
-    {
-      type: "scatter3d",
-      mode: "markers+text",
-      x,
-      y,
-      z,
-      text,
-      textposition: "top center",
-      textfont: { size: 11, color: "#cbd5e1" },
-      customdata,
-      hovertext,
-      hovertemplate: "#%{customdata}<br>%{hovertext}<extra></extra>",
-      marker: {
-        size: markerStyle.sizes,
-        color: markerStyle.colors,
-        opacity: 0.96,
-        line: { width: 1.2, color: "rgba(15,23,42,0.95)" },
-      },
+  const data = [];
+  data.push({
+    type: "scatter3d",
+    mode: "markers+text",
+    x,
+    y,
+    z,
+    text,
+    textposition: "top center",
+    textfont: { size: 11, color: "#cbd5e1" },
+    customdata,
+    hovertext,
+    hovertemplate: "#%{customdata}<br>%{hovertext}<extra></extra>",
+    marker: {
+      size: markerStyle.sizes,
+      color: markerStyle.colors,
+      opacity: 0.96,
+      line: { width: 1.2, color: "rgba(15,23,42,0.95)" },
     },
-  ];
+  });
+  data.push(originRayLineTrace);
+  if (originRayArrowTrace) data.push(originRayArrowTrace);
+  data.push(originTrace);
 
   const layout = {
     autosize: true,
