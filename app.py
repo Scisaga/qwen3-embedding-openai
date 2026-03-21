@@ -93,14 +93,15 @@ def _build_index_html() -> str:
       --danger:#ef4444;
       --warn:#f59e0b;
       --shadow:0 24px 80px rgba(0,0,0,.42);
-      --radius:16px;
-      --radius2:22px;
+      --radius:10px;
+      --radius2:12px;
     }
     *{box-sizing:border-box}
     html,body{min-height:100%;margin:0}
     body{
       color:var(--text);
       font-family:"IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      overflow-x:hidden;
       background:
         radial-gradient(1100px 700px at 10% -10%, rgba(255,138,31,.18), transparent 60%),
         radial-gradient(900px 600px at 100% 0%, rgba(96,165,250,.16), transparent 55%),
@@ -117,28 +118,34 @@ def _build_index_html() -> str:
     }
     .app{display:flex;min-height:100vh}
     .sidebar{
-      width:270px;
-      padding:18px 16px;
+      width:250px;
+      padding:16px 14px;
       border-right:1px solid var(--border);
       background:rgba(2,6,23,.54);
       backdrop-filter:blur(12px);
       position:sticky;
       top:0;
       height:100vh;
-      overflow:auto;
+      overflow:hidden;
     }
-    .brand{display:flex;gap:12px;align-items:center;padding:10px 10px 18px}
-    .logo{width:40px;height:40px;border-radius:14px;display:block;object-fit:cover;box-shadow:0 12px 28px rgba(255,138,31,.26)}
+    .brand{display:flex;gap:12px;align-items:center;padding:10px 8px 14px}
+    .logo{width:40px;height:40px;border-radius:10px;display:block;object-fit:cover;box-shadow:0 12px 28px rgba(255,138,31,.26)}
     .brand-title{font-size:16px;font-weight:700;letter-spacing:.2px}
     .brand-sub{font-size:12px;color:var(--muted2);margin-top:2px}
     .nav{display:flex;flex-direction:column;gap:8px}
-    .nav a{
+    .nav .nav-link{
+      width:100%;
+      appearance:none;
+      border:none;
+      text-align:left;
       display:flex;gap:10px;align-items:center;
-      padding:11px 12px;border-radius:14px;border:1px solid transparent;
+      padding:10px 12px;border-radius:10px;border:1px solid transparent;
+      background:transparent;
       color:var(--muted);transition:background .16s,border-color .16s,color .16s;
+      cursor:pointer;
     }
-    .nav a:hover{background:rgba(148,163,184,.08)}
-    .nav a.active{
+    .nav .nav-link:hover{background:rgba(148,163,184,.08)}
+    .nav .nav-link.active{
       background:rgba(255,138,31,.12);
       border-color:rgba(255,138,31,.22);
       color:var(--text);
@@ -147,7 +154,7 @@ def _build_index_html() -> str:
       width:9px;height:9px;border-radius:999px;background:rgba(148,163,184,.54);
       box-shadow:0 0 0 4px rgba(148,163,184,.08)
     }
-    .nav a.active .dot{
+    .nav .nav-link.active .dot{
       background:var(--accent);
       box-shadow:0 0 0 4px rgba(255,138,31,.14)
     }
@@ -175,8 +182,21 @@ def _build_index_html() -> str:
     .chip.ok{color:#bbf7d0;border-color:rgba(34,197,94,.26);background:rgba(34,197,94,.12)}
     .chip.warn{color:#fde68a;border-color:rgba(245,158,11,.28);background:rgba(245,158,11,.12)}
     .chip.bad{color:#fecaca;border-color:rgba(239,68,68,.26);background:rgba(239,68,68,.12)}
-    .content{padding:22px 18px 42px}
-    .section{max-width:1320px;margin:0 auto 18px}
+    .content{padding:18px 16px 32px}
+    .tabbar{
+      max-width:1320px;margin:0 auto 14px;display:flex;gap:8px;flex-wrap:wrap
+    }
+    .tab-btn{
+      appearance:none;border:1px solid var(--border);background:rgba(15,23,42,.45);
+      color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;font-size:13px
+    }
+    .tab-btn.active{
+      color:var(--text);
+      background:rgba(255,138,31,.12);
+      border-color:rgba(255,138,31,.25);
+    }
+    .section{max-width:1320px;margin:0 auto 16px;display:none}
+    .section.active{display:block}
     .section-head{margin:0 0 14px}
     .section-head h1,.section-head h2{margin:0;font-size:24px;letter-spacing:.2px}
     .section-head p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.7}
@@ -186,12 +206,12 @@ def _build_index_html() -> str:
       border:1px solid var(--border);border-radius:var(--radius2);background:var(--panel);
       box-shadow:var(--shadow);overflow:hidden
     }
-    .card-body{padding:22px}
+    .card-body{padding:18px}
     .card-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 14px}
     .card-title h3{margin:0;font-size:18px}
     .card-title p{margin:6px 0 0;color:var(--muted);font-size:13px}
     .status{
-      display:flex;align-items:center;gap:10px;padding:14px;border-radius:16px;
+      display:flex;align-items:center;gap:10px;padding:12px;border-radius:10px;
       background:rgba(15,23,42,.46);border:1px solid var(--border);font-size:13px
     }
     .light{width:10px;height:10px;border-radius:999px;background:var(--muted)}
@@ -199,7 +219,7 @@ def _build_index_html() -> str:
     .status.warn .light{background:var(--warn);box-shadow:0 0 0 5px rgba(245,158,11,.16)}
     .status.bad .light{background:var(--danger);box-shadow:0 0 0 5px rgba(239,68,68,.15)}
     .error-box{
-      display:none;margin-top:14px;padding:14px;border-radius:16px;
+      display:none;margin-top:14px;padding:12px;border-radius:10px;
       border:1px solid rgba(239,68,68,.28);background:rgba(127,29,29,.22);color:#fecaca
     }
     .error-box.show{display:block}
@@ -207,7 +227,7 @@ def _build_index_html() -> str:
     .hint{margin-top:8px;font-size:12px;color:var(--muted)}
     label{display:block;margin:0 0 8px;font-size:13px;color:#dbeafe}
     textarea,input,select{
-      width:100%;padding:12px 14px;border-radius:14px;border:1px solid var(--border);
+      width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
       background:rgba(15,23,42,.62);color:var(--text);font:inherit
     }
     textarea{min-height:220px;resize:vertical}
@@ -215,7 +235,7 @@ def _build_index_html() -> str:
     .row-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
     .actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:18px}
     .btn{
-      appearance:none;border:none;border-radius:14px;padding:11px 14px;
+      appearance:none;border:none;border-radius:10px;padding:10px 13px;
       font:600 13px/1 inherit;cursor:pointer;transition:transform .06s,opacity .16s
     }
     .btn:hover{opacity:.94}
@@ -226,17 +246,17 @@ def _build_index_html() -> str:
     .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--muted)}
     .metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:14px}
     .metric{
-      padding:14px;border-radius:16px;border:1px solid var(--border);background:rgba(15,23,42,.48)
+      padding:12px;border-radius:10px;border:1px solid var(--border);background:rgba(15,23,42,.48)
     }
     .metric .n{font-size:24px;font-weight:700}
     .metric .l{font-size:12px;color:var(--muted)}
     pre{
       margin:0;white-space:pre-wrap;word-break:break-word;background:rgba(2,6,23,.72);
-      border:1px solid var(--border);padding:14px;border-radius:14px;max-height:420px;overflow:auto
+      border:1px solid var(--border);padding:12px;border-radius:10px;max-height:420px;overflow:auto
     }
     .toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}
     .toolbar .small{font-size:12px;color:var(--muted)}
-    .matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:14px;background:rgba(2,6,23,.52)}
+    .matrix-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px;background:rgba(2,6,23,.52)}
     table{width:100%;border-collapse:collapse}
     th,td{padding:10px 12px;border-bottom:1px solid rgba(148,163,184,.08);text-align:center;font-size:12px}
     th:first-child,td:first-child{text-align:left;color:var(--muted)}
@@ -245,12 +265,20 @@ def _build_index_html() -> str:
       background:rgba(255,255,255,.06);font-size:12px;color:#dbeafe
     }
     .templates{display:flex;flex-direction:column;gap:10px}
-    .template-note{padding:12px 14px;border-radius:14px;border:1px solid var(--border);background:rgba(15,23,42,.42);font-size:13px;color:var(--muted)}
+    .template-note{padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:rgba(15,23,42,.42);font-size:13px;color:var(--muted)}
+    .kv-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .kv-item{border:1px solid var(--border);background:rgba(15,23,42,.44);border-radius:10px;padding:10px}
+    .kv-item span{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    .kv-item strong{font-size:15px;font-weight:600;color:var(--text)}
+    .api-list{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+    .api-list li{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.42);padding:10px 12px}
+    .api-list p{margin:6px 0 0;color:var(--muted);font-size:12px}
     .inline-code{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
     @media (max-width: 1100px){
       .app{display:block}
-      .sidebar{width:auto;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border)}
+      .sidebar{width:auto;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border);overflow:visible}
       .grid,.grid-2,.row,.row-3,.metrics{grid-template-columns:1fr}
+      .kv-grid{grid-template-columns:1fr}
     }
   </style>
 </head>
@@ -266,11 +294,9 @@ def _build_index_html() -> str:
       </div>
 
       <nav class="nav">
-        <a href="#debug-section" class="active"><span class="dot"></span><span>调试台</span></a>
-        <a href="#templates-section"><span class="dot"></span><span>请求模板</span></a>
-        <a href="#runtime-section"><span class="dot"></span><span>运行状态</span></a>
-        <a href="#admin-section"><span class="dot"></span><span>热重载</span></a>
-        <a href="#api-section"><span class="dot"></span><span>API 说明</span></a>
+        <button type="button" class="nav-link active" data-tab="debug-section"><span class="dot"></span><span>调试台</span></button>
+        <button type="button" class="nav-link" data-tab="results-section"><span class="dot"></span><span>结果分析</span></button>
+        <button type="button" class="nav-link" data-tab="admin-section"><span class="dot"></span><span>运维管理</span></button>
       </nav>
 
       <div class="sidebar-card">
@@ -300,7 +326,13 @@ def _build_index_html() -> str:
       </div>
 
       <div class="content">
-        <section class="section" id="debug-section">
+        <div class="tabbar">
+          <button type="button" class="tab-btn active" data-tab="debug-section">调试台</button>
+          <button type="button" class="tab-btn" data-tab="results-section">结果分析</button>
+          <button type="button" class="tab-btn" data-tab="admin-section">运维管理</button>
+        </div>
+
+        <section class="section active tab-panel" id="debug-section">
           <div class="section-head">
             <h1>Embedding 调试台</h1>
             <p>更接近参考 ASR 项目的交互形态：左侧导航、模板切换、状态面板、热重载表单，以及向量下载和相似度矩阵。你可以直接在这里完成大部分接入调试。</p>
@@ -400,11 +432,11 @@ def _build_index_html() -> str:
                   <div class="metric"><div class="n" id="metricState">-</div><div class="l">Backend State</div></div>
                 </div>
 
-                <div class="grid-2" style="margin-top:16px">
-                  <div class="template-note"><strong>模型</strong><br/><span id="healthModelChip">__MODEL_ID__</span></div>
-                  <div class="template-note"><strong>服务时间</strong><br/><span id="healthTimeChip">--</span></div>
-                  <div class="template-note"><strong>设备目标</strong><br/><span id="healthDeviceChip">cuda</span></div>
-                  <div class="template-note"><strong>内层地址</strong><br/><span id="healthBackendChip">http://127.0.0.1:8001</span></div>
+                <div class="kv-grid">
+                  <div class="kv-item"><span>模型</span><strong id="healthModelChip">__MODEL_ID__</strong></div>
+                  <div class="kv-item"><span>服务时间</span><strong id="healthTimeChip">--</strong></div>
+                  <div class="kv-item"><span>设备目标</span><strong id="healthDeviceChip">cuda</strong></div>
+                  <div class="kv-item"><span>内层地址</span><strong id="healthBackendChip">http://127.0.0.1:8001</strong></div>
                 </div>
 
                 <div style="margin-top:16px">
@@ -416,7 +448,7 @@ def _build_index_html() -> str:
           </div>
         </section>
 
-        <section class="section" id="templates-section">
+        <section class="section tab-panel" id="results-section">
           <div class="grid">
             <section class="card">
               <div class="card-body">
@@ -476,7 +508,7 @@ def _build_index_html() -> str:
           </div>
         </section>
 
-        <section class="section" id="admin-section">
+        <section class="section tab-panel" id="admin-section">
           <div class="grid">
             <section class="card">
               <div class="card-body">
@@ -543,13 +575,13 @@ def _build_index_html() -> str:
                     <p>当前页面只是内置调试台，正式接入仍建议直接调用 API。</p>
                   </div>
                 </div>
-                <div class="templates">
-                  <div class="template-note"><strong>OpenAI 兼容接口</strong><br/><code>POST /v1/embeddings</code></div>
-                  <div class="template-note"><strong>调试页入口</strong><br/><code>GET /</code></div>
-                  <div class="template-note"><strong>MCP 入口</strong><br/><code>POST/GET /mcp</code></div>
-                  <div class="template-note"><strong>健康检查</strong><br/><code>GET /health</code></div>
-                  <div class="template-note"><strong>文档</strong><br/><code>GET /docs</code> / <code>GET /redoc</code></div>
-                </div>
+                <ul class="api-list">
+                  <li><code>POST /v1/embeddings</code><p>OpenAI 兼容 Embeddings 接口</p></li>
+                  <li><code>GET /</code><p>内置调试页面</p></li>
+                  <li><code>POST/GET /mcp</code><p>MCP Streamable HTTP 入口</p></li>
+                  <li><code>GET /health</code><p>运行状态与 backend 聚合健康</p></li>
+                  <li><code>GET /docs</code> / <code>GET /redoc</code><p>Swagger 与 ReDoc 文档</p></li>
+                </ul>
               </div>
             </section>
           </div>
@@ -656,6 +688,23 @@ def _build_index_html() -> str:
       reloadBtn: document.getElementById("reloadBtn"),
       reloadOut: document.getElementById("reloadOut"),
     };
+    const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
+    const tabControls = Array.from(document.querySelectorAll("[data-tab]"));
+
+    function setActiveTab(tabId, syncHash = true) {
+      const targetId = tabPanels.some(panel => panel.id === tabId) ? tabId : "debug-section";
+
+      tabPanels.forEach((panel) => {
+        panel.classList.toggle("active", panel.id === targetId);
+      });
+      tabControls.forEach((control) => {
+        control.classList.toggle("active", control.dataset.tab === targetId);
+      });
+
+      if (syncHash) {
+        history.replaceState(null, "", `#${targetId}`);
+      }
+    }
 
     function splitTexts(value) {
       return value.split(/\\n+/).map(v => v.trim()).filter(Boolean);
@@ -939,7 +988,13 @@ def _build_index_html() -> str:
     els.copyJsonBtn.addEventListener("click", copyJson);
     els.downloadBtn.addEventListener("click", downloadJson);
     els.reloadBtn.addEventListener("click", submitReload);
+    tabControls.forEach((control) => {
+      control.addEventListener("click", () => {
+        setActiveTab(control.dataset.tab || "debug-section");
+      });
+    });
 
+    setActiveTab(window.location.hash.replace("#", "") || "debug-section", false);
     applyTemplate("retrieval_pair");
     refreshHealth();
   </script>
