@@ -14,13 +14,13 @@ MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-4B")
 MODEL_REVISION = os.getenv("MODEL_REVISION")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "12302"))
-VLLM_HOST = os.getenv("VLLM_HOST", "127.0.0.1")
-VLLM_PORT = int(os.getenv("VLLM_PORT", "8001"))
+BACKEND_HOST = os.getenv("BACKEND_HOST") or os.getenv("VLLM_HOST", "127.0.0.1")
+BACKEND_PORT = int(os.getenv("BACKEND_PORT") or os.getenv("VLLM_PORT", "8001"))
 HF_HOME = os.getenv("HF_HOME", "/models")
 DTYPE = os.getenv("DTYPE", "float16")
-MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "8192"))
+MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "4096"))
 MAX_DIMENSIONS = int(os.getenv("MAX_DIMENSIONS", "2560"))
-GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.80"))
+GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.72"))
 DEFAULT_QUERY_INSTRUCTION = os.getenv(
     "DEFAULT_QUERY_INSTRUCTION",
     "Given a web search query, retrieve relevant passages that answer the query",
@@ -39,7 +39,7 @@ MANAGE_BACKEND_PROCESS = (
 )
 PRELOAD_MODEL = os.getenv("PRELOAD_MODEL", "1").strip().lower() not in ("0", "false", "no", "off")
 
-_DEFAULT_BACKEND_PATH = f"http://{VLLM_HOST}:{VLLM_PORT}"
+_DEFAULT_BACKEND_PATH = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
 _backend_lock = threading.RLock()
 _backend_process: Optional[subprocess.Popen[Any]] = None
 _backend_started_at: Optional[float] = None
@@ -66,8 +66,8 @@ class BackendProxyError(RuntimeError):
 class BackendSettings:
     model_id: str = MODEL_ID
     model_revision: Optional[str] = MODEL_REVISION
-    backend_host: str = VLLM_HOST
-    backend_port: int = VLLM_PORT
+    backend_host: str = BACKEND_HOST
+    backend_port: int = BACKEND_PORT
     dtype: str = DTYPE
     max_model_len: int = MAX_MODEL_LEN
     gpu_memory_utilization: float = GPU_MEMORY_UTILIZATION
@@ -109,6 +109,11 @@ def _build_backend_env() -> dict[str, str]:
     env = _apply_proxy_env(dict(os.environ))
     env["HF_HOME"] = _settings.hf_home
     env.setdefault("VLLM_LOGGING_LEVEL", "INFO")
+    # Our wrapper used to expose BACKEND_PORT through the env name `VLLM_PORT`.
+    # That collides with vLLM's own runtime env var for internal IPC port
+    # allocation, which triggers misleading logs like "Port 8001 is already in
+    # use, trying port 8002" after the API server has already bound 8001.
+    env.pop("VLLM_PORT", None)
     return env
 
 

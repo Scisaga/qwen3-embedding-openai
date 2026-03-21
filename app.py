@@ -505,11 +505,11 @@ def _build_index_html() -> str:
                   </div>
                   <div>
                     <label for="reloadMaxModelLen">Max Model Len</label>
-                    <input id="reloadMaxModelLen" type="number" placeholder="8192"/>
+                    <input id="reloadMaxModelLen" type="number" placeholder="4096"/>
                   </div>
                   <div>
                     <label for="reloadGpuUtil">GPU Memory Utilization</label>
-                    <input id="reloadGpuUtil" type="number" step="0.01" min="0.1" max="1" placeholder="0.80"/>
+                    <input id="reloadGpuUtil" type="number" step="0.01" min="0.1" max="1" placeholder="0.72"/>
                   </div>
                 </div>
 

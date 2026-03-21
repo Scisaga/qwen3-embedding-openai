@@ -49,3 +49,11 @@ def test_prepare_backend_payload_rejects_invalid_dimensions():
 def test_prepare_backend_payload_rejects_invalid_input_type():
     with pytest.raises(embedding_service.InputValidationError):
         embedding_service.prepare_backend_payload({"input": "hello", "input_type": "mixed"})
+
+
+def test_build_backend_env_strips_vllm_port(monkeypatch):
+    monkeypatch.setenv("VLLM_PORT", "8001")
+
+    backend_env = embedding_service._build_backend_env()
+
+    assert "VLLM_PORT" not in backend_env

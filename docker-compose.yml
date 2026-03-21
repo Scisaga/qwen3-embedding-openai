@@ -10,23 +10,26 @@ services:
       # MODEL_REVISION: "main"
       HOST: "0.0.0.0"
       PORT: "12302"
-      VLLM_HOST: "127.0.0.1"
-      VLLM_PORT: "8001"
+      BACKEND_HOST: "127.0.0.1"
+      BACKEND_PORT: "8001"
       TZ: "Asia/Shanghai"
       HF_HOME: "/models"
       DTYPE: "float16"
-      # Qwen3-Embedding-4B 在 RTX 2080 Ti (22GB) 上使用更保守的默认值
-      MAX_MODEL_LEN: "8192"
+      # Qwen3-Embedding-4B 在 RTX 2080 Ti (22GB, Turing) 上使用更保守的默认值
+      MAX_MODEL_LEN: "4096"
       MAX_DIMENSIONS: "2560"
-      GPU_MEMORY_UTILIZATION: "0.80"
+      GPU_MEMORY_UTILIZATION: "0.72"
       PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
       DEFAULT_QUERY_INSTRUCTION: "Given a web search query, retrieve relevant passages that answer the query"
       PRELOAD_MODEL: "1"
       ADMIN_TOKEN: "change-me"
       HTTP_PROXY: ${HTTP_PROXY:-}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
-      # 可选：追加给 vLLM 的参数，例如张量并行或 trust-remote-code
-      # VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
+      # 2080 Ti / Turing 上优先避免长时间卡在 startup：
+      # - --enforce-eager: 关闭 CUDA graph
+      # - --disable-frontend-multiprocessing: 降低前后端分离复杂度
+      # - --max-num-seqs / --max-num-batched-tokens: 缩小调度窗口
+      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 1024 --disable-custom-all-reduce"
     volumes:
       - ./models:/models
     ipc: host

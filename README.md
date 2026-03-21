@@ -164,13 +164,13 @@ curl -X POST http://localhost:12302/admin/reload \
   -H "x-admin-token: change-me" \
   -d '{
     "model_id":"Qwen/Qwen3-Embedding-4B",
-    "max_model_len":8192,
-    "gpu_memory_utilization":0.8
+    "max_model_len":4096,
+    "gpu_memory_utilization":0.72
   }'
 ```
 
 ## 多 GPU 与选卡说明
-- `deploy.resources.reservations.devices.count` 控制容器可见的 GPU 数量
+- `deploy.resources.reservations.devices.device_ids` 可以显式绑定宿主机 GPU
 - `NVIDIA_VISIBLE_DEVICES` 控制暴露宿主机哪一张卡给容器
   - `"0"` -> 宿主机第 1 张卡
   - `"1"` -> 宿主机第 2 张卡
@@ -187,14 +187,17 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 - `MODEL_ID`：模型 ID，默认 `Qwen/Qwen3-Embedding-4B`
 - `NVIDIA_VISIBLE_DEVICES`：选卡
 - `PORT`：外层 FastAPI 端口，默认 `12302`
-- `VLLM_HOST` / `VLLM_PORT`：容器内 vLLM 监听地址，通常无需改
+- `BACKEND_HOST` / `BACKEND_PORT`：容器内 vLLM 监听地址，通常无需改
 - `HF_HOME`：模型缓存目录
-- `MAX_MODEL_LEN`：最大上下文长度，默认 `8192`（更适合 2080 Ti）
+- `MAX_MODEL_LEN`：最大上下文长度，默认 `4096`（更适合 2080 Ti / Turing）
 - `MAX_DIMENSIONS`：输出向量维度上限，默认 `2560`
-- `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率，默认 `0.80`
+- `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率，默认 `0.72`
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
-- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数
+- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数；当前默认包含 `--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 1024`
+
+注意：
+- 不建议再使用 `VLLM_PORT` 作为 wrapper 配置名。`VLLM_PORT` 是 vLLM 自己的运行时环境变量，会影响它的内部端口分配，导致日志里出现类似 `Port 8001 is already in use, trying port 8002` 的误导性信息。
 
 ## 编码格式说明
 - `encoding_format=float` 是当前保证可用的路径
