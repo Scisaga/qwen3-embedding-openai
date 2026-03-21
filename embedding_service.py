@@ -30,7 +30,7 @@ BACKEND_START_TIMEOUT = int(os.getenv("BACKEND_START_TIMEOUT", "600"))
 BACKEND_HTTP_TIMEOUT = float(os.getenv("BACKEND_HTTP_TIMEOUT", "120"))
 BACKEND_POLL_INTERVAL = float(os.getenv("BACKEND_POLL_INTERVAL", "1.0"))
 REQUEST_READY_TIMEOUT = float(os.getenv("REQUEST_READY_TIMEOUT", "3.0"))
-BACKEND_PORT_SCAN_WINDOW = int(os.getenv("BACKEND_PORT_SCAN_WINDOW", "4"))
+BACKEND_PORT_SCAN_WINDOW = int(os.getenv("BACKEND_PORT_SCAN_WINDOW", "0"))
 VLLM_EXTRA_ARGS = os.getenv("VLLM_EXTRA_ARGS", "")
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL", "").strip()
 MANAGE_BACKEND_PROCESS = (
@@ -45,6 +45,7 @@ _backend_process: Optional[subprocess.Popen[Any]] = None
 _backend_started_at: Optional[float] = None
 _backend_ready = False
 _backend_last_error = ""
+_backend_probe_path = ""
 
 
 class InputValidationError(ValueError):
@@ -267,33 +268,42 @@ def _stop_backend_process_locked() -> None:
 
 
 async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
-    timeout = httpx.Timeout(5.0, connect=2.0)
+    global _backend_probe_path
+    timeout = httpx.Timeout(3.0, connect=1.0)
     ports_to_try = [_settings.backend_port]
-    for offset in range(1, max(1, BACKEND_PORT_SCAN_WINDOW) + 1):
+    for offset in range(1, max(0, BACKEND_PORT_SCAN_WINDOW) + 1):
         ports_to_try.append(_settings.backend_port + offset)
 
+    probe_paths = ["/health", "/v1/models"]
     last_message = ""
     async with httpx.AsyncClient(timeout=timeout) as client:
         for port in ports_to_try:
             base_url = f"http://{_settings.backend_host}:{port}"
-            try:
-                response = await client.get(f"{base_url}/health")
-            except httpx.HTTPError as exc:
-                last_message = str(exc)
-                continue
+            for path in probe_paths:
+                try:
+                    response = await client.get(f"{base_url}{path}")
+                except httpx.HTTPError as exc:
+                    last_message = str(exc)
+                    continue
 
-            if response.status_code >= 400:
-                last_message = f"vLLM health returned HTTP {response.status_code}"
-                continue
+                if response.status_code == 404:
+                    last_message = f"{path} returned HTTP 404 on {base_url}"
+                    continue
+                if response.status_code >= 400:
+                    last_message = f"{path} returned HTTP {response.status_code} on {base_url}"
+                    continue
 
-            payload: Optional[dict[str, Any]]
-            try:
-                payload = response.json()
-            except ValueError:
-                payload = None
+                payload: Optional[dict[str, Any]]
+                try:
+                    payload = response.json()
+                except ValueError:
+                    payload = None
 
-            _settings.backend_base_url = base_url
-            return True, payload, ""
+                _settings.backend_base_url = base_url
+                _backend_probe_path = path
+                return True, payload, ""
+
+    _backend_probe_path = ""
 
     return False, None, last_message or "All connection attempts failed"
 
@@ -441,8 +451,8 @@ def prepare_backend_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-async def _post_embeddings(payload: dict[str, Any]) -> dict[str, Any]:
-    timeout = httpx.Timeout(BACKEND_HTTP_TIMEOUT, connect=10.0)
+async def _post_embeddings(payload: dict[str, Any], timeout_s: Optional[float] = None) -> dict[str, Any]:
+    timeout = httpx.Timeout(timeout_s or BACKEND_HTTP_TIMEOUT, connect=5.0)
     base_url = _settings.backend_base_url.rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -476,16 +486,24 @@ async def _post_embeddings(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 async def create_embeddings(request_payload: dict[str, Any]) -> dict[str, Any]:
-    global _backend_ready
+    global _backend_ready, _backend_last_error
     backend_payload = prepare_backend_payload(request_payload)
     try:
         await ensure_backend_started(wait_ready=True, timeout_s=REQUEST_READY_TIMEOUT)
     except BackendUnavailableError as exc:
         if _backend_alive():
-            raise BackendUnavailableError(
-                "Backend is still starting and may still be loading model weights on GPU. "
-                "Please wait a bit and refresh /health."
-            ) from exc
+            # Some vLLM versions/flags can make /health lag behind actual readiness.
+            # Try one short real request before declaring startup not ready.
+            try:
+                response_payload = await _post_embeddings(backend_payload, timeout_s=max(15.0, REQUEST_READY_TIMEOUT))
+                _backend_ready = True
+                _backend_last_error = ""
+                return response_payload
+            except (BackendUnavailableError, BackendProxyError):
+                raise BackendUnavailableError(
+                    "Backend is still starting and may still be loading model weights on GPU. "
+                    "Please wait a bit and refresh /health."
+                ) from exc
         raise
     response_payload = await _post_embeddings(backend_payload)
     _backend_ready = True
@@ -538,6 +556,7 @@ async def get_health_payload() -> dict[str, Any]:
         "backend_state": backend_state,
         "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
+        "backend_probe_path": _backend_probe_path,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
         "backend_last_error": backend_message,
@@ -580,6 +599,7 @@ def get_health_snapshot() -> dict[str, Any]:
         "backend_state": backend_state,
         "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
+        "backend_probe_path": _backend_probe_path,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
         "backend_last_error": backend_message,
