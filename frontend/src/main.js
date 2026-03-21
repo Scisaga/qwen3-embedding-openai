@@ -221,11 +221,15 @@ function makeColorIndex(labels) {
 function normalizeDrawPoints(points, labels) {
   const categoryIndex = makeColorIndex(labels);
   return points.map((point, index) => [
-    Number.isFinite(point.normalized_x) ? point.normalized_x : point.x,
-    Number.isFinite(point.normalized_y) ? point.normalized_y : point.y,
+    clampToPlotRange(Number.isFinite(point.normalized_x) ? point.normalized_x : point.x),
+    clampToPlotRange(Number.isFinite(point.normalized_y) ? point.normalized_y : point.y),
     categoryIndex[index] || 0,
-    0.75,
   ]);
+}
+
+function clampToPlotRange(value) {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(-1, Math.min(1, value));
 }
 
 function renderSelected(index) {
@@ -258,8 +262,27 @@ function highlightPoint(index) {
     return;
   }
   const related = [index, ...(state.neighbors[String(index)] || []).map((item) => item.index)];
-  state.scatterplot.draw(state.drawPoints, { selected: related });
+  state.scatterplot.select(related);
   renderSelected(index);
+}
+
+async function fitViewToCurrentPoints(scatterplot) {
+  const total = state.drawPoints.length;
+  if (!total) {
+    scatterplot.zoomToOrigin({ transition: true, transitionDuration: 350 });
+    return;
+  }
+  if (total === 1) {
+    const [x, y] = state.drawPoints[0];
+    scatterplot.zoomToLocation([x, y], 0.35, { transition: true, transitionDuration: 450 });
+    return;
+  }
+  const allIndices = Array.from({ length: total }, (_, i) => i);
+  scatterplot.zoomToPoints(allIndices, {
+    padding: 0.15,
+    transition: true,
+    transitionDuration: 450,
+  });
 }
 
 function bindScatterplotEvents(scatterplot) {
@@ -335,15 +358,21 @@ async function runProjector() {
     state.drawPoints = normalizeDrawPoints(state.points, state.labelsByIndex);
 
     const scatterplot = ensureScatterplot();
+    const pointSize = Math.max(2, Number(payload.point_size || 4));
     scatterplot.set({
-      pointSize: Number(payload.point_size || 4),
+      pointSize,
+      pointSizeSelected: Math.max(2, Math.round(pointSize * 0.5)),
+      pointOutlineWidth: 1,
       pointColor: palette,
-      colorBy: "valueA",
-      opacityBy: "valueB",
-      opacity: [0.25, 1],
+      pointColorActive: "#f8fafc",
+      pointColorHover: "#fef3c7",
+      colorBy: "category",
+      opacity: 0.95,
+      opacityInactiveScale: 0.45,
       lassoType: "brush",
     });
     await scatterplot.draw(state.drawPoints);
+    await fitViewToCurrentPoints(scatterplot);
 
     const latency = Math.round(performance.now() - startedAt);
     els.badgeModel.textContent = `model: ${result.model || "-"}`;
