@@ -1,6 +1,7 @@
 import contextlib
 import json
 import os
+import asyncio
 from typing import Literal, Optional
 
 from fastapi import FastAPI, Header
@@ -949,9 +950,16 @@ def create_application() -> FastAPI:
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
         async with mcp.session_manager.run():
-            await maybe_preload_backend()
-            yield
-            await shutdown_backend()
+            preload_task: Optional[asyncio.Task] = None
+            preload_task = asyncio.create_task(maybe_preload_backend())
+            try:
+                yield
+            finally:
+                if preload_task is not None and not preload_task.done():
+                    preload_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await preload_task
+                await shutdown_backend()
 
     app = FastAPI(title="Qwen3 Embedding", lifespan=lifespan)
     app.mount(
