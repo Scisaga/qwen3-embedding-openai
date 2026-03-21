@@ -1,6 +1,6 @@
 # Qwen3-Embedding：自托管 Embedding 推理服务
 
-把 `Qwen/Qwen3-Embedding-8B` 封装成一个可自托管的 embedding 推理服务：对外提供 OpenAI 兼容的 `POST /v1/embeddings`、HTTP MCP Server、内置调试页面，并附带 FastAPI 的交互式接口文档，方便在内网或私有环境里快速接入与运维。
+把 `Qwen/Qwen3-Embedding-4B` 封装成一个可自托管的 embedding 推理服务：对外提供 OpenAI 兼容的 `POST /v1/embeddings`、HTTP MCP Server、内置调试页面，并附带 FastAPI 的交互式接口文档，方便在内网或私有环境里快速接入与运维。
 
 ## 功能
 - OpenAI 兼容 Embeddings API：`POST /v1/embeddings`
@@ -56,7 +56,7 @@ client = OpenAI(
 )
 
 response = client.embeddings.create(
-    model="Qwen/Qwen3-Embedding-8B",
+    model="Qwen/Qwen3-Embedding-4B",
     input="What is the capital of China?",
     extra_body={
         "input_type": "query",
@@ -73,7 +73,7 @@ print(len(response.data[0].embedding))
 curl http://localhost:12302/v1/embeddings \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "Qwen/Qwen3-Embedding-8B",
+    "model": "Qwen/Qwen3-Embedding-4B",
     "input": [
       "What is the capital of China?",
       "The capital of China is Beijing."
@@ -105,7 +105,7 @@ Query:{text}
 - 若未传 `instruction`，使用默认英文检索 instruction：`Given a web search query, retrieve relevant passages that answer the query`
 - `input_type=document` 或未传 `input_type` 时，不自动改写输入
 - 单次请求内的所有输入共享同一个 `input_type` 和 `instruction`
-- `dimensions` 支持 `32-4096`
+- `dimensions` 支持 `32-2560`
 
 ## MCP 快速开始
 
@@ -143,7 +143,7 @@ http://localhost:12302/mcp
 docker run -d --name qwen3_embedding_openai \
   --gpus all \
   -p 12302:12302 \
-  -e MODEL_ID="Qwen/Qwen3-Embedding-8B" \
+  -e MODEL_ID="Qwen/Qwen3-Embedding-4B" \
   -e NVIDIA_VISIBLE_DEVICES="0" \
   -e HF_HOME="/models" \
   -v ./models:/models \
@@ -163,9 +163,9 @@ curl -X POST http://localhost:12302/admin/reload \
   -H "Content-Type: application/json" \
   -H "x-admin-token: change-me" \
   -d '{
-    "model_id":"Qwen/Qwen3-Embedding-8B",
-    "max_model_len":32768,
-    "gpu_memory_utilization":0.9
+    "model_id":"Qwen/Qwen3-Embedding-4B",
+    "max_model_len":8192,
+    "gpu_memory_utilization":0.8
   }'
 ```
 
@@ -184,13 +184,14 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 
 ## 常用环境变量
 在 `docker-compose.yml` 的 `environment` 里可调：
-- `MODEL_ID`：模型 ID，默认 `Qwen/Qwen3-Embedding-8B`
+- `MODEL_ID`：模型 ID，默认 `Qwen/Qwen3-Embedding-4B`
 - `NVIDIA_VISIBLE_DEVICES`：选卡
 - `PORT`：外层 FastAPI 端口，默认 `12302`
 - `VLLM_HOST` / `VLLM_PORT`：容器内 vLLM 监听地址，通常无需改
 - `HF_HOME`：模型缓存目录
-- `MAX_MODEL_LEN`：最大上下文长度
-- `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率
+- `MAX_MODEL_LEN`：最大上下文长度，默认 `8192`（更适合 2080 Ti）
+- `MAX_DIMENSIONS`：输出向量维度上限，默认 `2560`
+- `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率，默认 `0.80`
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
 - `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数

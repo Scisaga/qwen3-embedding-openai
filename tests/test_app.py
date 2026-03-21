@@ -9,7 +9,7 @@ def test_embeddings_route_returns_openai_shape(monkeypatch):
         assert payload["input_type"] == "query"
         return {
             "object": "list",
-            "model": "Qwen/Qwen3-Embedding-8B",
+            "model": "Qwen/Qwen3-Embedding-4B",
             "data": [
                 {"object": "embedding", "index": 0, "embedding": [0.1, 0.2, 0.3]},
             ],
@@ -39,7 +39,7 @@ def test_health_route_reflects_backend_status(monkeypatch):
         return {
             "status": "ok",
             "backend_ready": True,
-            "model_id": "Qwen/Qwen3-Embedding-8B",
+            "model_id": "Qwen/Qwen3-Embedding-4B",
         }
 
     monkeypatch.setattr(app, "get_health_payload", fake_health)
@@ -62,7 +62,7 @@ def test_admin_reload_requires_token(monkeypatch):
 
 def test_admin_reload_success(monkeypatch):
     async def fake_reload(payload):
-        assert payload["model_id"] == "Qwen/Qwen3-Embedding-8B"
+        assert payload["model_id"] == "Qwen/Qwen3-Embedding-4B"
         return {"status": "ok", "backend_ready": True}
 
     monkeypatch.setattr(app, "ADMIN_TOKEN", "secret")
@@ -72,7 +72,7 @@ def test_admin_reload_success(monkeypatch):
         response = client.post(
             "/admin/reload",
             headers={"x-admin-token": "secret"},
-            json={"model_id": "Qwen/Qwen3-Embedding-8B"},
+            json={"model_id": "Qwen/Qwen3-Embedding-4B"},
         )
 
     assert response.status_code == 200

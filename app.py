@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from embedding_service import (
     ADMIN_TOKEN,
     DEFAULT_QUERY_INSTRUCTION,
+    MAX_DIMENSIONS,
     BackendProxyError,
     BackendUnavailableError,
     InputValidationError,
@@ -30,7 +31,7 @@ class EmbeddingsRequest(BaseModel):
 
     input: str | list[str]
     model: Optional[str] = None
-    dimensions: Optional[int] = Field(default=None, ge=32, le=4096)
+    dimensions: Optional[int] = Field(default=None, ge=32, le=MAX_DIMENSIONS)
     encoding_format: Optional[str] = None
     user: Optional[str] = None
     input_type: Optional[Literal["query", "document"]] = None
@@ -348,7 +349,7 @@ def _build_index_html() -> str:
                   </div>
                   <div>
                     <label for="dimensions">Dimensions</label>
-                    <input id="dimensions" type="number" min="32" max="4096" placeholder="例如 1024"/>
+                    <input id="dimensions" type="number" min="32" max="__MAX_DIMENSIONS__" placeholder="例如 1024"/>
                   </div>
                 </div>
 
@@ -489,7 +490,7 @@ def _build_index_html() -> str:
                 <div class="row">
                   <div>
                     <label for="reloadModelId">Model ID</label>
-                    <input id="reloadModelId" placeholder="Qwen/Qwen3-Embedding-8B"/>
+                    <input id="reloadModelId" placeholder="Qwen/Qwen3-Embedding-4B"/>
                   </div>
                   <div>
                     <label for="reloadToken">x-admin-token</label>
@@ -504,11 +505,11 @@ def _build_index_html() -> str:
                   </div>
                   <div>
                     <label for="reloadMaxModelLen">Max Model Len</label>
-                    <input id="reloadMaxModelLen" type="number" placeholder="32768"/>
+                    <input id="reloadMaxModelLen" type="number" placeholder="8192"/>
                   </div>
                   <div>
                     <label for="reloadGpuUtil">GPU Memory Utilization</label>
-                    <input id="reloadGpuUtil" type="number" step="0.01" min="0.1" max="1" placeholder="0.92"/>
+                    <input id="reloadGpuUtil" type="number" step="0.01" min="0.1" max="1" placeholder="0.80"/>
                   </div>
                 </div>
 
@@ -941,6 +942,7 @@ def _build_index_html() -> str:
     return (
         template.replace("__MODEL_ID__", get_current_model_id())
         .replace("__DEFAULT_INSTRUCTION__", DEFAULT_QUERY_INSTRUCTION)
+        .replace("__MAX_DIMENSIONS__", str(MAX_DIMENSIONS))
     )
 
 

@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 import httpx
 
-MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-8B")
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-4B")
 MODEL_REVISION = os.getenv("MODEL_REVISION")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "12302"))
@@ -18,8 +18,9 @@ VLLM_HOST = os.getenv("VLLM_HOST", "127.0.0.1")
 VLLM_PORT = int(os.getenv("VLLM_PORT", "8001"))
 HF_HOME = os.getenv("HF_HOME", "/models")
 DTYPE = os.getenv("DTYPE", "float16")
-MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "32768"))
-GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.92"))
+MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "8192"))
+MAX_DIMENSIONS = int(os.getenv("MAX_DIMENSIONS", "2560"))
+GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.80"))
 DEFAULT_QUERY_INSTRUCTION = os.getenv(
     "DEFAULT_QUERY_INSTRUCTION",
     "Given a web search query, retrieve relevant passages that answer the query",
@@ -358,8 +359,8 @@ def _validate_dimensions(dimensions: Optional[int]) -> Optional[int]:
         return None
     if not isinstance(dimensions, int):
         raise InputValidationError("`dimensions` must be an integer.")
-    if dimensions < 32 or dimensions > 4096:
-        raise InputValidationError("`dimensions` must be between 32 and 4096.")
+    if dimensions < 32 or dimensions > MAX_DIMENSIONS:
+        raise InputValidationError(f"`dimensions` must be between 32 and {MAX_DIMENSIONS}.")
     return dimensions
 
 
