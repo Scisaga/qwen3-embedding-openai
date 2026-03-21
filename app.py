@@ -490,7 +490,7 @@ def _build_index_html() -> str:
                 <div class="row">
                   <div>
                     <label for="reloadModelId">Model ID</label>
-                    <input id="reloadModelId" placeholder="Qwen/Qwen3-Embedding-4B"/>
+                    <input id="reloadModelId" placeholder="Qwen/Qwen3-Embedding-8B"/>
                   </div>
                   <div>
                     <label for="reloadToken">x-admin-token</label>

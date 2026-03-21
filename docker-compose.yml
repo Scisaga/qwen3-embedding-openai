@@ -6,7 +6,7 @@ services:
     ports:
       - "12302:12302"
     environment:
-      MODEL_ID: "Qwen/Qwen3-Embedding-4B"
+      MODEL_ID: "Qwen/Qwen3-Embedding-8B"
       # MODEL_REVISION: "main"
       HOST: "0.0.0.0"
       PORT: "12302"
@@ -15,9 +15,9 @@ services:
       TZ: "Asia/Shanghai"
       HF_HOME: "/models"
       DTYPE: "float16"
-      # Qwen3-Embedding-4B 在 RTX 2080 Ti (22GB, Turing) 上使用更保守的默认值
+      # Qwen3-Embedding-8B 在 RTX 2080 Ti (22GB, Turing) 上使用更保守的默认值
       MAX_MODEL_LEN: "4096"
-      MAX_DIMENSIONS: "2560"
+      MAX_DIMENSIONS: "4096"
       GPU_MEMORY_UTILIZATION: "0.72"
       PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
       DEFAULT_QUERY_INSTRUCTION: "Given a web search query, retrieve relevant passages that answer the query"

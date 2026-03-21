@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 import httpx
 
-MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-4B")
+MODEL_ID = os.getenv("MODEL_ID", "Qwen/Qwen3-Embedding-8B")
 MODEL_REVISION = os.getenv("MODEL_REVISION")
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "12302"))
@@ -19,7 +19,7 @@ BACKEND_PORT = int(os.getenv("BACKEND_PORT") or os.getenv("VLLM_PORT", "8001"))
 HF_HOME = os.getenv("HF_HOME", "/models")
 DTYPE = os.getenv("DTYPE", "float16")
 MAX_MODEL_LEN = int(os.getenv("MAX_MODEL_LEN", "4096"))
-MAX_DIMENSIONS = int(os.getenv("MAX_DIMENSIONS", "2560"))
+MAX_DIMENSIONS = int(os.getenv("MAX_DIMENSIONS", "4096"))
 GPU_MEMORY_UTILIZATION = float(os.getenv("GPU_MEMORY_UTILIZATION", "0.72"))
 DEFAULT_QUERY_INSTRUCTION = os.getenv(
     "DEFAULT_QUERY_INSTRUCTION",
