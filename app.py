@@ -131,17 +131,28 @@ def _build_index_html() -> str:
       border-radius:999px;
       font-size:.92em;
     }
-    .app{display:flex;min-height:100vh}
+    .app{
+      display:grid;
+      grid-template-columns:clamp(248px,22vw,312px) minmax(0,1fr);
+      min-height:100vh;
+      align-items:start;
+      gap:12px;
+      padding:12px;
+    }
     .sidebar{
-      width:250px;
+      width:auto;
+      min-width:0;
       padding:16px 14px;
-      border-right:1px solid var(--border);
+      border:1px solid var(--border);
+      border-radius:12px;
       background:rgba(2,6,23,.54);
       backdrop-filter:blur(12px);
       position:sticky;
-      top:0;
-      height:100vh;
-      overflow:hidden;
+      top:12px;
+      height:auto;
+      max-height:calc(100vh - 24px);
+      overflow-x:hidden;
+      overflow-y:auto;
     }
     .brand{display:flex;gap:12px;align-items:center;padding:10px 8px 14px}
     .logo{width:40px;height:40px;border-radius:10px;display:block;object-fit:cover;box-shadow:0 12px 28px rgba(255,138,31,.26)}
@@ -178,9 +189,16 @@ def _build_index_html() -> str:
       border:1px solid var(--border);background:rgba(15,23,42,.42)
     }
     .sidebar-card h3{margin:0 0 10px;font-size:13px}
-    .sidebar-card p,.sidebar-card li{margin:0;color:var(--muted);font-size:12px;line-height:1.65}
+    .sidebar-card p,.sidebar-card li{margin:0;color:var(--muted);font-size:12px;line-height:1.65;overflow-wrap:anywhere}
     .sidebar-card ul{padding-left:16px;margin:0}
-    .main{flex:1;display:flex;flex-direction:column}
+    .service-endpoints{
+      display:inline-flex;
+      flex-wrap:wrap;
+      gap:6px;
+      max-width:100%;
+      vertical-align:middle;
+    }
+    .main{min-width:0;display:flex;flex-direction:column}
     .topbar{
       position:sticky;top:0;z-index:12;
       display:flex;justify-content:space-between;align-items:center;gap:12px;
@@ -222,6 +240,7 @@ def _build_index_html() -> str:
       border:1px solid var(--border);border-radius:var(--radius2);background:var(--panel);
       box-shadow:var(--shadow);overflow:hidden
     }
+    .card,.metric,.kv-item,.sidebar-card{min-width:0}
     .card-body{padding:18px}
     .card-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 0 14px}
     .card-title h3{margin:0;font-size:18px}
@@ -290,9 +309,18 @@ def _build_index_html() -> str:
     .api-list li{border:1px solid var(--border);border-radius:10px;background:rgba(15,23,42,.42);padding:10px 12px}
     .api-list p{margin:6px 0 0;color:var(--muted);font-size:12px}
     .inline-code{font-family:ui-monospace, SFMono-Regular, Menlo, monospace}
-    @media (max-width: 1100px){
+    @media (max-width: 920px){
       .app{display:block}
-      .sidebar{width:auto;height:auto;position:relative;border-right:none;border-bottom:1px solid var(--border);overflow:visible}
+      .sidebar{
+        width:auto;
+        height:auto;
+        position:relative;
+        top:auto;
+        border:none;
+        border-bottom:1px solid var(--border);
+        border-radius:0;
+        overflow:visible;
+      }
       .grid,.grid-2,.row,.row-3,.metrics{grid-template-columns:1fr}
       .kv-grid{grid-template-columns:1fr}
     }
@@ -318,7 +346,7 @@ def _build_index_html() -> str:
 
       <div class="sidebar-card">
         <h3>当前服务</h3>
-        <p>对外暴露 <code>/v1/embeddings</code>、<code>/mcp</code>、<code>/health</code>。查询侧支持 Qwen instruction 注入，底层推理由容器内的 vLLM 子进程完成。</p>
+        <p>对外暴露 <span class="service-endpoints"><code>/v1/embeddings</code><code>/mcp</code><code>/health</code></span>。查询侧支持 Qwen instruction 注入，底层推理由容器内的 vLLM 子进程完成。</p>
       </div>
 
       <div class="sidebar-card">
@@ -452,9 +480,7 @@ def _build_index_html() -> str:
 
                 <div class="kv-grid">
                   <div class="kv-item"><span>模型</span><strong id="healthModelChip">__MODEL_ID__</strong></div>
-                  <div class="kv-item"><span>服务时间</span><strong id="healthTimeChip">--</strong></div>
                   <div class="kv-item"><span>设备目标</span><strong id="healthDeviceChip">cuda</strong></div>
-                  <div class="kv-item"><span>内层地址</span><strong id="healthBackendChip">http://127.0.0.1:8001</strong></div>
                 </div>
 
                 <div style="margin-top:16px">
@@ -695,9 +721,7 @@ def _build_index_html() -> str:
       topTimeChip: document.getElementById("topTimeChip"),
       topDeviceChip: document.getElementById("topDeviceChip"),
       healthModelChip: document.getElementById("healthModelChip"),
-      healthTimeChip: document.getElementById("healthTimeChip"),
       healthDeviceChip: document.getElementById("healthDeviceChip"),
-      healthBackendChip: document.getElementById("healthBackendChip"),
       reloadModelId: document.getElementById("reloadModelId"),
       reloadToken: document.getElementById("reloadToken"),
       reloadDtype: document.getElementById("reloadDtype"),
@@ -863,9 +887,7 @@ def _build_index_html() -> str:
         lastHealthPayload = payload;
         els.healthOut.textContent = JSON.stringify(payload, null, 2);
         els.healthModelChip.textContent = payload.model_id || "-";
-        els.healthTimeChip.textContent = payload.server_time || "--";
         els.healthDeviceChip.textContent = payload.backend_target_device || "cuda";
-        els.healthBackendChip.textContent = payload.backend_url || "-";
         els.topModelChip.textContent = `Model: ${payload.model_id || "-"}`;
         els.topTimeChip.textContent = `Server Time: ${payload.server_time || "--"}`;
         els.topDeviceChip.textContent = `Target: ${payload.backend_target_device || "cuda"}`;

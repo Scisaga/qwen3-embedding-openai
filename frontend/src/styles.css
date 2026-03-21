@@ -10,6 +10,9 @@
   --ok: #22c55e;
   --bad: #ef4444;
   --warn: #f59e0b;
+  --scroll-track: rgba(15, 23, 42, 0.86);
+  --scroll-thumb: rgba(71, 85, 105, 0.78);
+  --scroll-thumb-hover: rgba(100, 116, 139, 0.88);
 }
 
 * {
@@ -161,6 +164,39 @@ select {
 textarea {
   min-height: 120px;
   resize: vertical;
+}
+
+.left textarea {
+  font-size: 13px;
+  line-height: 1.55;
+  font-weight: 400;
+  color: rgba(203, 213, 225, 0.74);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+}
+
+.left textarea::placeholder {
+  color: rgba(148, 163, 184, 0.56);
+}
+
+.left textarea::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.left textarea::-webkit-scrollbar-track {
+  background: var(--scroll-track);
+  border-left: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.left textarea::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--scroll-thumb), rgba(51, 65, 85, 0.9));
+  border: 2px solid var(--scroll-track);
+  border-radius: 999px;
+}
+
+.left textarea::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, var(--scroll-thumb-hover), rgba(71, 85, 105, 0.95));
 }
 
 .row {
