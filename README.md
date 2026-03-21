@@ -1,19 +1,23 @@
 # Qwen3-Embedding：自托管 Embedding 推理服务
 
-把 `Qwen/Qwen3-Embedding-8B` 封装成一个可自托管的 embedding 推理服务：对外提供 OpenAI 兼容的 `POST /v1/embeddings`、`POST /v1/embeddings/projector`、HTTP MCP Server、内置调试页面，并附带 FastAPI 的交互式接口文档，方便在内网或私有环境里快速接入与运维。
+把 `Qwen/Qwen3-Embedding-8B` 封装成一个可自托管的 embedding 推理服务：
+对外提供 OpenAI 兼容 Embeddings API、3D Projector API、HTTP MCP Server、内置调试控制台与 Projector 可视化页面，并附带 FastAPI 交互式接口文档，方便在内网/私有环境里快速接入与运维。
+
+项目地址：
+- 代码仓库：[`https://github.com/Scisaga/qwen3-embedding-openai`](https://github.com/Scisaga/qwen3-embedding-openai)
+- 镜像仓库（GHCR）：`ghcr.io/scisaga/qwen3-embedding-openai:latest`
 
 ## 功能
 - OpenAI 兼容 Embeddings API：`POST /v1/embeddings`
-- Projector API：`POST /v1/embeddings/projector`（后端预计算 2D 投影 + 近邻）
+- 3D Projector API：`POST /v1/embeddings/projector`（后端预计算 3D 投影 + 近邻）
 - Qwen 检索增强字段：`input_type=query|document`、`instruction`
 - MCP Server：HTTP 挂载到 `POST/GET /mcp`（Streamable HTTP）
-- 内置 Web UI：`GET /`（可直接输入文本调试 embedding）
-- Projector 视图：`GET /projector`（WebGL 点云 + 框选 + 近邻高亮）
+- 内置 Web UI：`GET /`（调试台、结果分析、运维管理）
+- Projector 视图：`GET /projector`（3D 点云、原点连线、箭头、坐标轴、近邻联动）
 - 交互式接口文档：`GET /docs`（Swagger UI）与 `GET /redoc`
 - 模型自动下载与缓存：将 `./models` 挂载到容器 `/models`（Hugging Face 缓存目录）
 - 运维友好：健康检查 `GET /health`；可选热重载 `POST /admin/reload`（`ADMIN_TOKEN` 保护）
-- 前端工程化：`frontend/` 使用 `Vite + regl-scatterplot`，Docker 构建时自动产出静态资源
-- 容器内双层架构：外层 FastAPI，对内拉起 `vLLM` 子进程做实际推理
+- GitHub Actions：自动构建并发布 Docker 镜像到 GHCR（`.github/workflows/docker-publish.yml`）
 
 ## 快速开始
 ```bash
@@ -21,6 +25,7 @@ docker compose up -d --build
 ```
 
 如果机器需要走代理才能访问 Hugging Face，可在同目录创建 `.env`（或启动前导出环境变量）：
+
 ```bash
 HTTP_PROXY=http://127.0.0.1:7890
 # 可选：不走代理的地址（默认：localhost,127.0.0.1）
@@ -34,20 +39,6 @@ HTTP_PROXY=http://127.0.0.1:7890
 - 接口文档（Swagger）：http://localhost:12302/docs
 - 接口文档（ReDoc）：http://localhost:12302/redoc
 - 健康检查：http://localhost:12302/health
-
-## 架构说明
-- **对外端口**：`PORT=12302`
-- **容器内 vLLM**：默认监听 `127.0.0.1:8001`
-- **工作方式**：外层 FastAPI 接收请求，必要时注入 Qwen query instruction，然后转发给容器内的 `vLLM` 子进程
-- **自动下载**：首次启动时若本地缓存不存在模型，`vLLM` 会自动从 Hugging Face 拉取 `MODEL_ID`
-
-这意味着你平时只需要访问：
-
-```text
-http://localhost:12302/v1/embeddings
-```
-
-不需要直接访问容器内的 `8001` 端口。
 
 ## OpenAI SDK 快速开始
 
@@ -73,6 +64,8 @@ print(len(response.data[0].embedding))
 ```
 
 ## curl 示例
+
+### Embeddings
 ```bash
 curl http://localhost:12302/v1/embeddings \
   -H "Content-Type: application/json" \
@@ -88,32 +81,23 @@ curl http://localhost:12302/v1/embeddings \
   }'
 ```
 
-## 接口一览
-- `POST /v1/embeddings`
-  - 标准字段：`input`、`model`、`dimensions`、`encoding_format`、`user`
-  - 扩展字段：`input_type`、`instruction`
-- `POST /v1/embeddings/projector`
-  - 字段：`inputs`、`labels`（可选）、`input_type`（可选）、`instruction`（可选）
-  - 投影参数：`projection_method=umap|tsne|pca`、`metric=cosine|euclidean`、`neighbors_k`、`point_size`
-  - 返回：`points`（2D 坐标 + 文本元数据）、`neighbors`、`projection_meta`、`usage`
-- `POST /mcp` / `GET /mcp`：MCP Streamable HTTP 入口
-- `GET /docs` / `GET /redoc`：交互式接口文档
-- `GET /openapi.json`：OpenAPI 规范 JSON
-- `GET /health`：健康检查与运行参数
-- `POST /admin/reload`：热重载模型（需 `x-admin-token`）
-
-## Qwen 扩展语义
-- `input_type=query` 时，服务会把每条输入包装为：
-
-```text
-Instruct: {instruction}
-Query:{text}
+### Projector
+```bash
+curl http://localhost:12302/v1/embeddings/projector \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": [
+      "What is the capital of China?",
+      "The capital of China is Beijing.",
+      "Paris is the capital of France."
+    ],
+    "labels": ["query", "fact", "fact"],
+    "projection_method": "umap",
+    "metric": "cosine",
+    "neighbors_k": 10,
+    "point_size": 5
+  }'
 ```
-
-- 若未传 `instruction`，使用默认英文检索 instruction：`Given a web search query, retrieve relevant passages that answer the query`
-- `input_type=document` 或未传 `input_type` 时，不自动改写输入
-- 单次请求内的所有输入共享同一个 `input_type` 和 `instruction`
-- `dimensions` 支持 `32-4096`
 
 ## MCP 快速开始
 
@@ -128,10 +112,13 @@ http://localhost:12302/mcp
 
 ## MCP 能力一览
 
-### Tool
+### Tools
 - `embed_text`
   - 入参：`texts`（必填，字符串或字符串数组）、`input_type`（可选）、`instruction`（可选）、`dimensions`（可选）
   - 返回：标准 OpenAI embeddings 响应形状
+- `project_texts`
+  - 入参：`texts`（必填）、`labels`（可选）、`projection_method`（可选，`umap|tsne|pca`）、`metric`（可选，`cosine|euclidean`）、`neighbors_k`（可选）、`point_size`（可选）
+  - 返回：Projector 负载（`points`、`neighbors`、`projection_meta`）
 
 ### Resources
 - `qwen3embedding://health`：当前模型、端口、backend 就绪状态、默认 instruction 等
@@ -139,31 +126,53 @@ http://localhost:12302/mcp
 
 ### Prompts
 - `retrieval_embedding_workflow`：指导客户端如何区分 query/document，并在 query 侧传入 instruction
+- `projector_workflow`：指导客户端如何构建可视化聚类与近邻探索请求
 
-## 模型自动下载与缓存
-- 容器内默认设置 `HF_HOME=/models`
-- `docker-compose.yml` 默认挂载 `./models:/models`
-- 如果本地没有缓存，首次启动会自动下载模型
-- 如果已下载过，后续重启会复用缓存，不会重复下载
+## 架构说明
+- **对外端口**：`PORT=12302`
+- **容器内 vLLM**：默认监听 `127.0.0.1:8001`
+- **工作方式**：外层 FastAPI 接收请求，必要时注入 Qwen query instruction，然后转发给容器内 `vLLM` 子进程
+- **自动下载**：首次启动若本地缓存不存在模型，`vLLM` 会自动从 Hugging Face 拉取 `MODEL_ID`
 
-## Projector 前端构建
-- 本项目采用 `Vite + regl-scatterplot`（目录：`frontend/`）。
-- Docker 构建会自动执行前端构建并将产物复制到 `static/projector`，因此正常 `docker compose up -d --build` 后直接可访问 `/projector`。
-- 本地前端开发可选：
+这意味着你通常只需要访问：
 
-```bash
-cd frontend
-npm install
-npm run dev
+```text
+http://localhost:12302/v1/embeddings
 ```
 
-- 本地打包可选：
+无需直接访问容器内 `8001`。
 
-```bash
-cd frontend
-npm install
-npm run build
-```
+## 接口一览
+- `POST /v1/embeddings`
+  - 标准字段：`input`、`model`、`dimensions`、`encoding_format`、`user`
+  - 扩展字段：`input_type`、`instruction`
+- `POST /v1/embeddings/projector`
+  - 字段：`inputs`、`labels`（可选）、`input_type`（可选）、`instruction`（可选）
+  - 投影参数：`projection_method=umap|tsne|pca`、`metric=cosine|euclidean`、`neighbors_k`、`point_size`
+  - 返回：`points`（3D 坐标 + 文本元数据）、`neighbors`、`projection_meta`、`usage`
+- `POST /mcp` / `GET /mcp`：MCP Streamable HTTP 入口
+- `GET /docs` / `GET /redoc`：交互式接口文档
+- `GET /openapi.json`：OpenAPI 规范 JSON
+- `GET /health`：健康检查与运行参数
+- `POST /admin/reload`：热重载模型（需 `x-admin-token`）
+
+## GitHub Workflow：自动构建发布镜像
+
+仓库内置工作流：`.github/workflows/docker-publish.yml`
+
+- 触发条件：
+  - push 到 `main`
+  - push `v*` 标签
+  - `pull_request` 到 `main`（仅构建，不推送）
+  - 手动触发 `workflow_dispatch`
+- 镜像仓库：`ghcr.io/<owner>/<repo>`
+- 标签策略：`latest`（默认分支）、分支名、tag 名、commit sha
+
+首次使用时请确保：
+
+1. 仓库已开启 GitHub Packages（GHCR）权限
+2. Actions 具备 `packages: write`（工作流已声明）
+3. 如果仓库是组织仓库，组织策略允许 `GITHUB_TOKEN` 推送包
 
 ## Docker 部署示例
 ```bash
@@ -171,10 +180,9 @@ docker run -d --name qwen3_embedding_openai \
   --gpus all \
   -p 12302:12302 \
   -e MODEL_ID="Qwen/Qwen3-Embedding-8B" \
-  -e NVIDIA_VISIBLE_DEVICES="0" \
   -e HF_HOME="/models" \
   -v ./models:/models \
-  qwen3-embedding-openai:latest
+  ghcr.io/scisaga/qwen3-embedding-openai:latest
 ```
 
 ## 切换模型（需重启）
@@ -202,38 +210,57 @@ curl -X POST http://localhost:12302/admin/reload \
   - `"0"` -> 宿主机第 1 张卡
   - `"1"` -> 宿主机第 2 张卡
   - `"0,1"` -> 同时暴露两张卡
-- 如果只暴露一张卡给容器，那么容器里的 `vLLM` 会把它当作内部的 `cuda:0` 使用，这是正常现象
-- 如果你要做多卡并行，可通过 `VLLM_EXTRA_ARGS` 追加参数，例如：
+- 如果只暴露一张卡，容器内 `vLLM` 会把它作为内部 `cuda:0` 使用，这是正常现象
+- 多卡并行可通过 `VLLM_EXTRA_ARGS` 追加参数，例如：
 
 ```yaml
 VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 ```
 
+## Projector 说明
+- 前端采用 `Vite + Plotly`（目录：`frontend/`）
+- Docker 构建会自动打包前端并复制到 `static/projector`，正常 `docker compose up -d --build` 后可直接访问 `/projector`
+- 当前可视化为 3D 点云，包含：
+  - 点编号标签
+  - 原点及原点到各点连线与箭头
+  - 三维坐标轴（X 红 / Y 绿 / Z 蓝）
+  - 点击点后右侧展示近邻
+
+本地前端开发：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+本地前端打包：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
+
 ## 常用环境变量
 在 `docker-compose.yml` 的 `environment` 里可调：
 - `MODEL_ID`：模型 ID，默认 `Qwen/Qwen3-Embedding-8B`
-- `NVIDIA_VISIBLE_DEVICES`：选卡
 - `PORT`：外层 FastAPI 端口，默认 `12302`
-- `BACKEND_HOST` / `BACKEND_PORT`：容器内 vLLM 监听地址，通常无需改
+- `BACKEND_HOST` / `BACKEND_PORT`：容器内 vLLM 监听地址
 - `HF_HOME`：模型缓存目录
-- `MAX_MODEL_LEN`：最大上下文长度，默认 `4096`（更适合 2080 Ti / Turing）
+- `DTYPE`：模型精度，默认 `float16`
+- `MAX_MODEL_LEN`：最大上下文长度，默认 `4096`
 - `MAX_DIMENSIONS`：输出向量维度上限，默认 `4096`
 - `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率，默认 `0.72`
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
-- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数；当前默认包含 `--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096`
-- `PROJECTOR_CACHE_TTL_SECONDS`：Projector 结果缓存 TTL（秒），默认 `300`
-- `PROJECTOR_CACHE_MAX_ITEMS`：Projector 缓存项上限，默认 `32`
+- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数
+- `PROJECTOR_CACHE_TTL_SECONDS`：Projector 结果缓存 TTL（秒）
+- `PROJECTOR_CACHE_MAX_ITEMS`：Projector 缓存项上限
 
 注意：
-- 如果你手动设置了 `--max-num-batched-tokens`，它不能小于 `MAX_MODEL_LEN`；否则 vLLM 会在启动阶段直接报错退出。
-
-注意：
-- 不建议再使用 `VLLM_PORT` 作为 wrapper 配置名。`VLLM_PORT` 是 vLLM 自己的运行时环境变量，会影响它的内部端口分配，导致日志里出现类似 `Port 8001 is already in use, trying port 8002` 的误导性信息。
-
-## 编码格式说明
-- `encoding_format=float` 是当前保证可用的路径
-- 其它编码格式会原样透传给底层 `vLLM`，是否支持取决于底层实现
+- 如果手动设置 `--max-num-batched-tokens`，它不能小于 `MAX_MODEL_LEN`；否则 vLLM 会在启动阶段报错退出。
+- 不建议使用 `VLLM_PORT` 作为 wrapper 配置名。该变量会与 vLLM 内部端口逻辑冲突，可能造成误导日志。
 
 ## 测试
 ```bash

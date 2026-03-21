@@ -325,6 +325,56 @@ function ensurePlotEvents() {
   state.plotEventsBound = true;
 }
 
+function getAxisLength() {
+  let maxAbs = 0;
+  for (const point of state.plotPoints) {
+    maxAbs = Math.max(maxAbs, Math.abs(point.x), Math.abs(point.y), Math.abs(point.z));
+  }
+  return Math.max(0.45, Math.min(0.95, maxAbs + 0.08));
+}
+
+function buildCoordinateAxisTraces() {
+  const axisLength = getAxisLength();
+  return [
+    {
+      type: "scatter3d",
+      mode: "lines+text",
+      x: [0, axisLength],
+      y: [0, 0],
+      z: [0, 0],
+      text: ["", "X"],
+      textposition: "top center",
+      textfont: { size: 10, color: "#f87171" },
+      hoverinfo: "skip",
+      line: { color: "#ef4444", width: 5 },
+    },
+    {
+      type: "scatter3d",
+      mode: "lines+text",
+      x: [0, 0],
+      y: [0, axisLength],
+      z: [0, 0],
+      text: ["", "Y"],
+      textposition: "top center",
+      textfont: { size: 10, color: "#86efac" },
+      hoverinfo: "skip",
+      line: { color: "#22c55e", width: 5 },
+    },
+    {
+      type: "scatter3d",
+      mode: "lines+text",
+      x: [0, 0],
+      y: [0, 0],
+      z: [0, axisLength],
+      text: ["", "Z"],
+      textposition: "top center",
+      textfont: { size: 10, color: "#93c5fd" },
+      hoverinfo: "skip",
+      line: { color: "#3b82f6", width: 5 },
+    },
+  ];
+}
+
 function buildOriginRayLineTrace() {
   const x = [];
   const y = [];
@@ -352,49 +402,58 @@ function buildOriginRayArrowTrace() {
   const x = [];
   const y = [];
   const z = [];
-  const u = [];
-  const v = [];
-  const w = [];
 
   for (const point of state.plotPoints) {
     const length = Math.sqrt(point.x * point.x + point.y * point.y + point.z * point.z);
     if (length < 1e-6) continue;
-    const ux = point.x / length;
-    const uy = point.y / length;
-    const uz = point.z / length;
-    const arrowLength = Math.min(0.014, Math.max(0.004, length * 0.02));
-    x.push(point.x);
-    y.push(point.y);
-    z.push(point.z);
-    u.push(ux * arrowLength);
-    v.push(uy * arrowLength);
-    w.push(uz * arrowLength);
+    const dx = point.x / length;
+    const dy = point.y / length;
+    const dz = point.z / length;
+
+    const arrowLength = Math.min(0.02, Math.max(0.008, length * 0.028));
+    const wingLength = arrowLength * 0.48;
+    const up = Math.abs(dz) < 0.92 ? [0, 0, 1] : [0, 1, 0];
+
+    const exRaw = dy * up[2] - dz * up[1];
+    const eyRaw = dz * up[0] - dx * up[2];
+    const ezRaw = dx * up[1] - dy * up[0];
+    const eLen = Math.sqrt(exRaw * exRaw + eyRaw * eyRaw + ezRaw * ezRaw);
+    if (eLen < 1e-6) continue;
+
+    const ex = exRaw / eLen;
+    const ey = eyRaw / eLen;
+    const ez = ezRaw / eLen;
+
+    const tipX = point.x;
+    const tipY = point.y;
+    const tipZ = point.z;
+    const baseX = tipX - dx * arrowLength;
+    const baseY = tipY - dy * arrowLength;
+    const baseZ = tipZ - dz * arrowLength;
+
+    const wing1X = baseX + ex * wingLength;
+    const wing1Y = baseY + ey * wingLength;
+    const wing1Z = baseZ + ez * wingLength;
+    const wing2X = baseX - ex * wingLength;
+    const wing2Y = baseY - ey * wingLength;
+    const wing2Z = baseZ - ez * wingLength;
+
+    x.push(tipX, wing1X, null, tipX, wing2X, null);
+    y.push(tipY, wing1Y, null, tipY, wing2Y, null);
+    z.push(tipZ, wing1Z, null, tipZ, wing2Z, null);
   }
 
   if (!x.length) return null;
   return {
-    type: "cone",
+    type: "scatter3d",
+    mode: "lines",
     x,
     y,
     z,
-    u,
-    v,
-    w,
-    anchor: "tip",
     hoverinfo: "skip",
-    showscale: false,
-    sizemode: "absolute",
-    sizeref: 0.007,
-    colorscale: [
-      [0, "#22d3ee"],
-      [1, "#22d3ee"],
-    ],
-    lighting: {
-      ambient: 0.72,
-      diffuse: 0.9,
-      specular: 0.28,
-      roughness: 0.45,
-      fresnel: 0.25,
+    line: {
+      color: "rgba(90,225,255,0.9)",
+      width: 2,
     },
   };
 }
@@ -433,6 +492,7 @@ async function render3DPlot(selectedIndex = null) {
   const text = state.plotPoints.map((item) => `#${item.index}`);
   const customdata = state.plotPoints.map((item) => item.index);
   const hovertext = state.plotPoints.map((item) => item.text || `#${item.index}`);
+  const axisTraces = buildCoordinateAxisTraces();
   const originRayLineTrace = buildOriginRayLineTrace();
   const originRayArrowTrace = buildOriginRayArrowTrace();
   const originTrace = buildOriginTrace();
@@ -457,6 +517,7 @@ async function render3DPlot(selectedIndex = null) {
       line: { width: 1.2, color: "rgba(15,23,42,0.95)" },
     },
   });
+  data.push(...axisTraces);
   data.push(originRayLineTrace);
   if (originRayArrowTrace) data.push(originRayArrowTrace);
   data.push(originTrace);
