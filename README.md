@@ -1,15 +1,18 @@
 # Qwen3-Embedding：自托管 Embedding 推理服务
 
-把 `Qwen/Qwen3-Embedding-8B` 封装成一个可自托管的 embedding 推理服务：对外提供 OpenAI 兼容的 `POST /v1/embeddings`、HTTP MCP Server、内置调试页面，并附带 FastAPI 的交互式接口文档，方便在内网或私有环境里快速接入与运维。
+把 `Qwen/Qwen3-Embedding-8B` 封装成一个可自托管的 embedding 推理服务：对外提供 OpenAI 兼容的 `POST /v1/embeddings`、`POST /v1/embeddings/projector`、HTTP MCP Server、内置调试页面，并附带 FastAPI 的交互式接口文档，方便在内网或私有环境里快速接入与运维。
 
 ## 功能
 - OpenAI 兼容 Embeddings API：`POST /v1/embeddings`
+- Projector API：`POST /v1/embeddings/projector`（后端预计算 2D 投影 + 近邻）
 - Qwen 检索增强字段：`input_type=query|document`、`instruction`
 - MCP Server：HTTP 挂载到 `POST/GET /mcp`（Streamable HTTP）
 - 内置 Web UI：`GET /`（可直接输入文本调试 embedding）
+- Projector 视图：`GET /projector`（WebGL 点云 + 框选 + 近邻高亮）
 - 交互式接口文档：`GET /docs`（Swagger UI）与 `GET /redoc`
 - 模型自动下载与缓存：将 `./models` 挂载到容器 `/models`（Hugging Face 缓存目录）
 - 运维友好：健康检查 `GET /health`；可选热重载 `POST /admin/reload`（`ADMIN_TOKEN` 保护）
+- 前端工程化：`frontend/` 使用 `Vite + regl-scatterplot`，Docker 构建时自动产出静态资源
 - 容器内双层架构：外层 FastAPI，对内拉起 `vLLM` 子进程做实际推理
 
 ## 快速开始
@@ -26,6 +29,7 @@ HTTP_PROXY=http://127.0.0.1:7890
 
 打开：
 - Web UI：http://localhost:12302/
+- Projector：http://localhost:12302/projector
 - MCP HTTP：http://localhost:12302/mcp
 - 接口文档（Swagger）：http://localhost:12302/docs
 - 接口文档（ReDoc）：http://localhost:12302/redoc
@@ -88,6 +92,10 @@ curl http://localhost:12302/v1/embeddings \
 - `POST /v1/embeddings`
   - 标准字段：`input`、`model`、`dimensions`、`encoding_format`、`user`
   - 扩展字段：`input_type`、`instruction`
+- `POST /v1/embeddings/projector`
+  - 字段：`inputs`、`labels`（可选）、`input_type`（可选）、`instruction`（可选）
+  - 投影参数：`projection_method=umap|tsne|pca`、`metric=cosine|euclidean`、`neighbors_k`、`point_size`
+  - 返回：`points`（2D 坐标 + 文本元数据）、`neighbors`、`projection_meta`、`usage`
 - `POST /mcp` / `GET /mcp`：MCP Streamable HTTP 入口
 - `GET /docs` / `GET /redoc`：交互式接口文档
 - `GET /openapi.json`：OpenAPI 规范 JSON
@@ -137,6 +145,25 @@ http://localhost:12302/mcp
 - `docker-compose.yml` 默认挂载 `./models:/models`
 - 如果本地没有缓存，首次启动会自动下载模型
 - 如果已下载过，后续重启会复用缓存，不会重复下载
+
+## Projector 前端构建
+- 本项目采用 `Vite + regl-scatterplot`（目录：`frontend/`）。
+- Docker 构建会自动执行前端构建并将产物复制到 `static/projector`，因此正常 `docker compose up -d --build` 后直接可访问 `/projector`。
+- 本地前端开发可选：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+- 本地打包可选：
+
+```bash
+cd frontend
+npm install
+npm run build
+```
 
 ## Docker 部署示例
 ```bash
@@ -195,6 +222,8 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
 - `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数；当前默认包含 `--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096`
+- `PROJECTOR_CACHE_TTL_SECONDS`：Projector 结果缓存 TTL（秒），默认 `300`
+- `PROJECTOR_CACHE_MAX_ITEMS`：Projector 缓存项上限，默认 `32`
 
 注意：
 - 如果你手动设置了 `--max-num-batched-tokens`，它不能小于 `MAX_MODEL_LEN`；否则 vLLM 会在启动阶段直接报错退出。

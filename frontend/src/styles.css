@@ -1,0 +1,277 @@
+:root {
+  --bg0: #050913;
+  --bg1: #09142b;
+  --panel: rgba(9, 20, 43, 0.84);
+  --line: rgba(148, 163, 184, 0.2);
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #ff9b2f;
+  --accent2: #ffd166;
+  --ok: #22c55e;
+  --bad: #ef4444;
+  --warn: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100vh;
+}
+
+body {
+  color: var(--text);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  background:
+    radial-gradient(1000px 650px at 0% -10%, rgba(255, 155, 47, 0.2), transparent 60%),
+    radial-gradient(900px 600px at 100% 0%, rgba(56, 189, 248, 0.16), transparent 55%),
+    linear-gradient(180deg, var(--bg0), var(--bg1));
+}
+
+.page {
+  display: grid;
+  grid-template-columns: 360px 1fr 340px;
+  gap: 12px;
+  padding: 12px;
+  min-height: 100vh;
+}
+
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.left,
+.right {
+  padding: 12px;
+  overflow: auto;
+  max-height: calc(100vh - 24px);
+}
+
+.center {
+  padding: 10px;
+  display: grid;
+  grid-template-rows: 42px 1fr;
+  gap: 10px;
+}
+
+.topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: rgba(2, 6, 23, 0.5);
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.subtitle {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  padding: 4px 10px;
+  color: var(--muted);
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.badge.ok {
+  color: #bbf7d0;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.badge.warn {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.canvas-wrap {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  overflow: hidden;
+  position: relative;
+}
+
+#plot {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  display: block;
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+h2 {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+label {
+  display: block;
+  margin: 10px 0 6px;
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+textarea,
+input,
+select {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(15, 23, 42, 0.75);
+  color: var(--text);
+  padding: 8px 10px;
+  font: inherit;
+}
+
+textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font: 600 12px/1 inherit;
+  cursor: pointer;
+  padding: 9px 12px;
+}
+
+.primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: #111827;
+}
+
+.secondary {
+  background: rgba(15, 23, 42, 0.75);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 8px;
+  line-height: 1.6;
+}
+
+.status {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  background: rgba(2, 6, 23, 0.62);
+}
+
+.status.ok {
+  border-color: rgba(34, 197, 94, 0.4);
+  color: #bbf7d0;
+}
+
+.status.bad {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fecaca;
+}
+
+.status.warn {
+  border-color: rgba(245, 158, 11, 0.4);
+  color: #fde68a;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: rgba(2, 6, 23, 0.58);
+  margin-bottom: 10px;
+}
+
+.card .k {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.card .v {
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(2, 6, 23, 0.78);
+  padding: 10px;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 12px;
+}
+
+ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+li {
+  margin-bottom: 6px;
+  font-size: 12px;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 1280px) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+  .left,
+  .right {
+    max-height: none;
+  }
+}

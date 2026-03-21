@@ -101,3 +101,42 @@ def test_backend_proxy_error_is_passthrough(monkeypatch):
 
     assert response.status_code == 400
     assert response.json()["error"]["message"] == "dimensions not supported"
+
+
+def test_projector_route_returns_payload(monkeypatch):
+    async def fake_projector(payload, embedder):
+        assert payload["projection_method"] == "pca"
+        return {
+            "object": "projector",
+            "model": "Qwen/Qwen3-Embedding-8B",
+            "points": [{"id": "0", "index": 0, "text": "hello", "label": "", "x": 0.0, "y": 0.0}],
+            "neighbors": {"0": []},
+            "projection_meta": {"projection_method": "pca", "cache_hit": False},
+        }
+
+    monkeypatch.setattr(app, "create_projector_payload", fake_projector)
+
+    with TestClient(app.create_application()) as client:
+        response = client.post(
+            "/v1/embeddings/projector",
+            json={"inputs": ["hello", "world"], "projection_method": "pca"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["object"] == "projector"
+
+
+def test_projector_route_handles_input_validation_error(monkeypatch):
+    async def fake_projector(payload, embedder):
+        raise embedding_service.InputValidationError("bad projector request")
+
+    monkeypatch.setattr(app, "create_projector_payload", fake_projector)
+
+    with TestClient(app.create_application()) as client:
+        response = client.post(
+            "/v1/embeddings/projector",
+            json={"inputs": ["hello"], "projection_method": "pca"},
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["message"] == "bad projector request"

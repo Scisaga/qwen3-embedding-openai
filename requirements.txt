@@ -1,5 +1,8 @@
 fastapi==0.115.8
 httpx==0.28.1
 mcp>=1.0.0,<2.0.0
+numpy==2.2.3
 pytest==8.3.5
+scikit-learn==1.6.1
+umap-learn==0.5.7
 uvicorn[standard]==0.34.0

@@ -21,6 +21,8 @@ services:
       GPU_MEMORY_UTILIZATION: "0.72"
       PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
       DEFAULT_QUERY_INSTRUCTION: "Given a web search query, retrieve relevant passages that answer the query"
+      PROJECTOR_CACHE_TTL_SECONDS: "300"
+      PROJECTOR_CACHE_MAX_ITEMS: "32"
       PRELOAD_MODEL: "1"
       ADMIN_TOKEN: "change-me"
       HTTP_PROXY: ${HTTP_PROXY:-}

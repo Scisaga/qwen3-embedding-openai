@@ -5,7 +5,7 @@ import asyncio
 from typing import Literal, Optional
 
 from fastapi import FastAPI, Header
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -24,6 +24,7 @@ from embedding_service import (
     shutdown_backend,
 )
 from mcp_server import create_mcp_server
+from projector_service import ProjectorDependencyError, create_projector_payload
 
 
 class EmbeddingsRequest(BaseModel):
@@ -48,6 +49,20 @@ class ReloadRequest(BaseModel):
     gpu_memory_utilization: Optional[float] = Field(default=None, gt=0.0, le=1.0)
     default_query_instruction: Optional[str] = None
     extra_args: Optional[str] = None
+
+
+class ProjectorRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    inputs: list[str]
+    labels: Optional[list[str]] = None
+    model: Optional[str] = None
+    input_type: Optional[Literal["query", "document"]] = None
+    instruction: Optional[str] = None
+    projection_method: Literal["umap", "tsne", "pca"] = "umap"
+    metric: Literal["cosine", "euclidean"] = "cosine"
+    neighbors_k: int = Field(default=10, ge=1, le=256)
+    point_size: float = Field(default=3.5, gt=0.0, le=64.0)
 
 
 def _error_response(message: str, status_code: int, error_type: str, code: Optional[int | str] = None) -> JSONResponse:
@@ -188,7 +203,8 @@ def _build_index_html() -> str:
     }
     .tab-btn{
       appearance:none;border:1px solid var(--border);background:rgba(15,23,42,.45);
-      color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;font-size:13px
+      color:var(--muted);padding:8px 12px;border-radius:10px;cursor:pointer;font-size:13px;
+      display:inline-flex;align-items:center
     }
     .tab-btn.active{
       color:var(--text);
@@ -297,6 +313,7 @@ def _build_index_html() -> str:
         <button type="button" class="nav-link active" data-tab="debug-section"><span class="dot"></span><span>调试台</span></button>
         <button type="button" class="nav-link" data-tab="results-section"><span class="dot"></span><span>结果分析</span></button>
         <button type="button" class="nav-link" data-tab="admin-section"><span class="dot"></span><span>运维管理</span></button>
+        <a class="nav-link" href="/projector"><span class="dot"></span><span>Projector 视图</span></a>
       </nav>
 
       <div class="sidebar-card">
@@ -330,6 +347,7 @@ def _build_index_html() -> str:
           <button type="button" class="tab-btn active" data-tab="debug-section">调试台</button>
           <button type="button" class="tab-btn" data-tab="results-section">结果分析</button>
           <button type="button" class="tab-btn" data-tab="admin-section">运维管理</button>
+          <a class="tab-btn" href="/projector">Projector</a>
         </div>
 
         <section class="section active tab-panel" id="debug-section">
@@ -577,7 +595,9 @@ def _build_index_html() -> str:
                 </div>
                 <ul class="api-list">
                   <li><code>POST /v1/embeddings</code><p>OpenAI 兼容 Embeddings 接口</p></li>
+                  <li><code>POST /v1/embeddings/projector</code><p>后端预计算 2D 投影 + 近邻，供 Projector 视图渲染</p></li>
                   <li><code>GET /</code><p>内置调试页面</p></li>
+                  <li><code>GET /projector</code><p>Projector 点云交互页面</p></li>
                   <li><code>POST/GET /mcp</code><p>MCP Streamable HTTP 入口</p></li>
                   <li><code>GET /health</code><p>运行状态与 backend 聚合健康</p></li>
                   <li><code>GET /docs</code> / <code>GET /redoc</code><p>Swagger 与 ReDoc 文档</p></li>
@@ -1010,6 +1030,8 @@ def _build_index_html() -> str:
 
 def create_application() -> FastAPI:
     mcp = create_mcp_server()
+    app_root = os.path.dirname(__file__)
+    projector_dist_dir = os.path.join(app_root, "static", "projector")
 
     @contextlib.asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -1028,14 +1050,30 @@ def create_application() -> FastAPI:
     app = FastAPI(title="Qwen3 Embedding", lifespan=lifespan)
     app.mount(
         "/static",
-        StaticFiles(directory=os.path.join(os.path.dirname(__file__), "static")),
+        StaticFiles(directory=os.path.join(app_root, "static")),
         name="static",
     )
+    if os.path.isdir(projector_dist_dir):
+        app.mount("/projector-static", StaticFiles(directory=projector_dist_dir), name="projector-static")
     app.mount("/mcp", mcp.streamable_http_app(), name="mcp")
 
     @app.get("/", response_class=HTMLResponse)
     def index() -> str:
         return _build_index_html()
+
+    @app.get("/projector", response_class=HTMLResponse)
+    def projector_index():
+        projector_index_path = os.path.join(projector_dist_dir, "index.html")
+        if os.path.isfile(projector_index_path):
+            return FileResponse(projector_index_path)
+        return HTMLResponse(
+            (
+                "<h2>Projector frontend not built yet.</h2>"
+                "<p>Run <code>npm install && npm run build</code> under <code>frontend/</code>, "
+                "or rebuild the Docker image to generate <code>/projector</code> assets.</p>"
+            ),
+            status_code=503,
+        )
 
     @app.get("/health")
     async def health() -> JSONResponse:
@@ -1053,6 +1091,25 @@ def create_application() -> FastAPI:
             if exc.payload is not None:
                 return JSONResponse(exc.payload, status_code=exc.status_code)
             return _error_response(str(exc), exc.status_code, "backend_error", exc.status_code)
+        return JSONResponse(response_payload)
+
+    @app.post("/v1/embeddings/projector")
+    async def projector_embeddings(request: ProjectorRequest) -> JSONResponse:
+        try:
+            response_payload = await create_projector_payload(
+                request.model_dump(exclude_none=True),
+                embedder=create_embeddings,
+            )
+        except InputValidationError as exc:
+            return _error_response(str(exc), 400, "invalid_request_error", 400)
+        except BackendUnavailableError as exc:
+            return _error_response(str(exc), 503, "service_unavailable", 503)
+        except BackendProxyError as exc:
+            if exc.payload is not None:
+                return JSONResponse(exc.payload, status_code=exc.status_code)
+            return _error_response(str(exc), exc.status_code, "backend_error", exc.status_code)
+        except ProjectorDependencyError as exc:
+            return _error_response(str(exc), 503, "service_unavailable", 503)
         return JSONResponse(response_payload)
 
     @app.post("/admin/reload")
