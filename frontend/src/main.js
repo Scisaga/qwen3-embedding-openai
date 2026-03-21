@@ -362,7 +362,7 @@ function buildOriginRayArrowTrace() {
     const ux = point.x / length;
     const uy = point.y / length;
     const uz = point.z / length;
-    const arrowLength = Math.min(0.06, Math.max(0.02, length * 0.08));
+    const arrowLength = Math.min(0.014, Math.max(0.004, length * 0.02));
     x.push(point.x);
     y.push(point.y);
     z.push(point.z);
@@ -384,7 +384,7 @@ function buildOriginRayArrowTrace() {
     hoverinfo: "skip",
     showscale: false,
     sizemode: "absolute",
-    sizeref: 0.03,
+    sizeref: 0.007,
     colorscale: [
       [0, "#22d3ee"],
       [1, "#22d3ee"],
@@ -408,10 +408,10 @@ function buildOriginTrace() {
     z: [0],
     text: ["0"],
     textposition: "top center",
-    textfont: { size: 12, color: "#67e8f9" },
+    textfont: { size: 9, color: "#67e8f9" },
     hovertemplate: "0 (0, 0, 0)<extra></extra>",
     marker: {
-      size: Math.max(6, state.pointSize + 3),
+      size: Math.max(2, Math.ceil(state.pointSize * 0.45)),
       color: "#22d3ee",
       line: { width: 1.2, color: "rgba(8,47,73,0.95)" },
       opacity: 1,
