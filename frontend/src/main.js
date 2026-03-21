@@ -1,4 +1,4 @@
-import createScatterplot from "regl-scatterplot";
+import Plotly from "plotly.js-dist-min";
 import "./styles.css";
 
 const app = document.getElementById("app");
@@ -7,7 +7,7 @@ app.innerHTML = `
   <div class="page">
     <aside class="panel left">
       <h2>Projector Controls</h2>
-      <div class="hint">输入文本后调用 <code>/v1/embeddings/projector</code>，后端预计算投影，前端用 WebGL 渲染点云。</div>
+      <div class="hint">输入文本后调用 <code>/v1/embeddings/projector</code>，后端预计算投影，前端用 3D 点云渲染。</div>
 
       <label for="inputs">Texts (one line per item)</label>
       <textarea id="inputs">What is the capital of China?
@@ -40,7 +40,7 @@ Shanghai is a major financial center in China.</textarea>
         </div>
         <div>
           <label for="pointSize">Point Size</label>
-          <input id="pointSize" type="number" min="1" max="64" step="0.5" value="4" />
+          <input id="pointSize" type="number" min="1" max="64" step="0.5" value="5" />
         </div>
       </div>
 
@@ -71,14 +71,14 @@ Shanghai is a major financial center in China.</textarea>
         <button class="secondary" id="homeBtn">Back To Console</button>
       </div>
 
-      <div class="hint">交互：滚轮缩放，拖拽平移，按住 Shift 可框选（lasso）。点击点可在右侧查看近邻。</div>
+      <div class="hint">交互：左键拖拽旋转，滚轮缩放，右键拖拽平移。每个点显示编号标签。</div>
     </aside>
 
     <main class="panel center">
       <div class="topline">
         <div>
           <div class="title">Embedding Projector</div>
-          <div class="subtitle">WebGL scatter + nearest-neighbor explorer</div>
+          <div class="subtitle">3D scatter + nearest-neighbor explorer</div>
         </div>
         <div class="badges">
           <span class="badge" id="badgeModel">model: -</span>
@@ -88,7 +88,7 @@ Shanghai is a major financial center in China.</textarea>
         </div>
       </div>
       <div class="canvas-wrap">
-        <canvas id="plot"></canvas>
+        <div id="plot"></div>
       </div>
     </main>
 
@@ -141,12 +141,15 @@ const els = {
 
 const state = {
   points: [],
-  drawPoints: [],
+  plotPoints: [],
   neighbors: {},
   labelsByIndex: [],
-  scatterplot: null,
+  categoriesByIndex: [],
   running: false,
   currentResponse: null,
+  pointSize: 5,
+  selectedIndex: null,
+  plotEventsBound: false,
 };
 
 const palette = [
@@ -188,7 +191,7 @@ function buildPayload() {
     projection_method: els.projectionMethod.value,
     metric: els.metric.value,
     neighbors_k: Number(els.neighborsK.value || 10),
-    point_size: Number(els.pointSize.value || 4),
+    point_size: Number(els.pointSize.value || 5),
   };
 
   if (els.inputType.value) payload.input_type = els.inputType.value;
@@ -218,18 +221,28 @@ function makeColorIndex(labels) {
   });
 }
 
-function normalizeDrawPoints(points, labels) {
-  const categoryIndex = makeColorIndex(labels);
-  return points.map((point, index) => [
-    clampToPlotRange(Number.isFinite(point.normalized_x) ? point.normalized_x : point.x),
-    clampToPlotRange(Number.isFinite(point.normalized_y) ? point.normalized_y : point.y),
-    categoryIndex[index] || 0,
-  ]);
-}
-
 function clampToPlotRange(value) {
   if (!Number.isFinite(value)) return 0;
   return Math.max(-1, Math.min(1, value));
+}
+
+function normalizePlotPoints(points, labels) {
+  const categoryIndex = makeColorIndex(labels);
+  return points.map((point, index) => ({
+    index,
+    text: point.text,
+    label: point.label,
+    category: categoryIndex[index] || 0,
+    x: clampToPlotRange(Number.isFinite(point.normalized_x) ? point.normalized_x : point.x),
+    y: clampToPlotRange(Number.isFinite(point.normalized_y) ? point.normalized_y : point.y),
+    z: clampToPlotRange(
+      Number.isFinite(point.normalized_z)
+        ? point.normalized_z
+        : Number.isFinite(point.z)
+          ? point.z
+          : 0
+    ),
+  }));
 }
 
 function renderSelected(index) {
@@ -257,74 +270,147 @@ function renderSelected(index) {
   els.neighbors.innerHTML = `<ul>${list}</ul>`;
 }
 
-function highlightPoint(index) {
-  if (!Number.isInteger(index) || index < 0 || !state.scatterplot || !state.drawPoints.length) {
-    return;
-  }
+function getRelatedSet(index) {
+  if (!Number.isInteger(index) || index < 0) return new Set();
   const related = [index, ...(state.neighbors[String(index)] || []).map((item) => item.index)];
-  state.scatterplot.select(related);
+  return new Set(related.filter((item) => Number.isInteger(item) && item >= 0 && item < state.plotPoints.length));
+}
+
+function buildMarkerStyle(selectedIndex) {
+  const relatedSet = getRelatedSet(selectedIndex);
+  const sizes = [];
+  const colors = [];
+
+  for (let i = 0; i < state.plotPoints.length; i += 1) {
+    const category = state.categoriesByIndex[i] || 0;
+    const baseColor = palette[category % palette.length];
+
+    let color = baseColor;
+    let size = state.pointSize;
+
+    if (Number.isInteger(selectedIndex) && i === selectedIndex) {
+      color = "#f8fafc";
+      size = Math.max(state.pointSize + 3, state.pointSize * 1.8);
+    } else if (relatedSet.has(i)) {
+      color = "#fde68a";
+      size = Math.max(state.pointSize + 2, state.pointSize * 1.4);
+    }
+
+    sizes.push(size);
+    colors.push(color);
+  }
+
+  return { sizes, colors };
+}
+
+function ensurePlotEvents() {
+  if (state.plotEventsBound) return;
+
+  els.plot.on("plotly_click", (event) => {
+    const point = event?.points?.[0];
+    const index = point?.customdata;
+    if (Number.isInteger(index)) {
+      highlightPoint(index);
+    }
+  });
+
+  els.plot.on("plotly_hover", (event) => {
+    const point = event?.points?.[0];
+    const index = point?.customdata;
+    if (Number.isInteger(index)) {
+      renderSelected(index);
+    }
+  });
+
+  state.plotEventsBound = true;
+}
+
+async function render3DPlot(selectedIndex = null) {
+  if (!state.plotPoints.length) {
+    Plotly.purge(els.plot);
+    state.plotEventsBound = false;
+    return;
+  }
+
+  const markerStyle = buildMarkerStyle(selectedIndex);
+  const x = state.plotPoints.map((item) => item.x);
+  const y = state.plotPoints.map((item) => item.y);
+  const z = state.plotPoints.map((item) => item.z);
+  const text = state.plotPoints.map((item) => `#${item.index}`);
+  const customdata = state.plotPoints.map((item) => item.index);
+  const hovertext = state.plotPoints.map((item) => item.text || `#${item.index}`);
+
+  const data = [
+    {
+      type: "scatter3d",
+      mode: "markers+text",
+      x,
+      y,
+      z,
+      text,
+      textposition: "top center",
+      textfont: { size: 11, color: "#cbd5e1" },
+      customdata,
+      hovertext,
+      hovertemplate: "#%{customdata}<br>%{hovertext}<extra></extra>",
+      marker: {
+        size: markerStyle.sizes,
+        color: markerStyle.colors,
+        opacity: 0.96,
+        line: { width: 1.2, color: "rgba(15,23,42,0.95)" },
+      },
+    },
+  ];
+
+  const layout = {
+    autosize: true,
+    showlegend: false,
+    paper_bgcolor: "rgba(0,0,0,0)",
+    plot_bgcolor: "rgba(0,0,0,0)",
+    margin: { l: 0, r: 0, t: 0, b: 0 },
+    uirevision: "projector-3d",
+    scene: {
+      dragmode: "orbit",
+      bgcolor: "rgba(2,6,23,0.72)",
+      xaxis: { visible: false, showbackground: false },
+      yaxis: { visible: false, showbackground: false },
+      zaxis: { visible: false, showbackground: false },
+      camera: { eye: { x: 1.45, y: 1.2, z: 1.15 } },
+      aspectmode: "cube",
+    },
+  };
+
+  const config = {
+    responsive: true,
+    displaylogo: false,
+    scrollZoom: true,
+    modeBarButtonsToRemove: ["lasso3d", "select2d", "select3d"],
+  };
+
+  await Plotly.react(els.plot, data, layout, config);
+  ensurePlotEvents();
+}
+
+function updatePlotHighlight(index) {
+  if (!state.plotPoints.length) return;
+  const markerStyle = buildMarkerStyle(index);
+  Plotly.restyle(
+    els.plot,
+    {
+      "marker.size": [markerStyle.sizes],
+      "marker.color": [markerStyle.colors],
+    },
+    [0]
+  );
+}
+
+function highlightPoint(index) {
+  if (!Number.isInteger(index) || index < 0 || index >= state.plotPoints.length) {
+    return;
+  }
+  state.selectedIndex = index;
   renderSelected(index);
-}
-
-async function fitViewToCurrentPoints(scatterplot) {
-  const total = state.drawPoints.length;
-  if (!total) {
-    scatterplot.zoomToOrigin({ transition: true, transitionDuration: 350 });
-    return;
-  }
-  if (total === 1) {
-    const [x, y] = state.drawPoints[0];
-    scatterplot.zoomToLocation([x, y], 0.35, { transition: true, transitionDuration: 450 });
-    return;
-  }
-  const allIndices = Array.from({ length: total }, (_, i) => i);
-  scatterplot.zoomToPoints(allIndices, {
-    padding: 0.15,
-    transition: true,
-    transitionDuration: 450,
-  });
-}
-
-function bindScatterplotEvents(scatterplot) {
-  scatterplot.subscribe("select", (event) => {
-    const points = Array.isArray(event?.points) ? event.points : [];
-    if (!points.length) return;
-    highlightPoint(points[0]);
-  });
-
-  scatterplot.subscribe("pointover", (event) => {
-    const point = event?.point;
-    if (Number.isInteger(point)) {
-      renderSelected(point);
-    }
-  });
-}
-
-function ensureScatterplot() {
-  if (state.scatterplot) return state.scatterplot;
-
-  const rect = els.plot.getBoundingClientRect();
-  const scatterplot = createScatterplot({
-    canvas: els.plot,
-    width: rect.width,
-    height: Math.max(500, rect.height),
-    pointSize: Number(els.pointSize.value || 4),
-    lassoType: "brush",
-    showReticle: true,
-  });
-  bindScatterplotEvents(scatterplot);
-  state.scatterplot = scatterplot;
-
-  const observer = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      const width = entry.contentRect.width;
-      const height = Math.max(500, entry.contentRect.height);
-      scatterplot.set({ width, height });
-    }
-  });
-  observer.observe(els.plot);
-
-  return scatterplot;
+  updatePlotHighlight(index);
 }
 
 async function runProjector() {
@@ -355,24 +441,12 @@ async function runProjector() {
     state.points = Array.isArray(result.points) ? result.points : [];
     state.neighbors = result.neighbors || {};
     state.labelsByIndex = state.points.map((point) => point.label || "unlabeled");
-    state.drawPoints = normalizeDrawPoints(state.points, state.labelsByIndex);
+    state.plotPoints = normalizePlotPoints(state.points, state.labelsByIndex);
+    state.categoriesByIndex = state.plotPoints.map((point) => point.category || 0);
+    state.pointSize = Math.max(3, Number(payload.point_size || 5));
+    state.selectedIndex = null;
 
-    const scatterplot = ensureScatterplot();
-    const pointSize = Math.max(2, Number(payload.point_size || 4));
-    scatterplot.set({
-      pointSize,
-      pointSizeSelected: Math.max(2, Math.round(pointSize * 0.5)),
-      pointOutlineWidth: 1,
-      pointColor: palette,
-      pointColorActive: "#f8fafc",
-      pointColorHover: "#fef3c7",
-      colorBy: "category",
-      opacity: 0.95,
-      opacityInactiveScale: 0.45,
-      lassoType: "brush",
-    });
-    await scatterplot.draw(state.drawPoints);
-    await fitViewToCurrentPoints(scatterplot);
+    await render3DPlot(null);
 
     const latency = Math.round(performance.now() - startedAt);
     els.badgeModel.textContent = `model: ${result.model || "-"}`;
@@ -408,7 +482,7 @@ function fillDemo() {
   els.projectionMethod.value = "umap";
   els.metric.value = "cosine";
   els.neighborsK.value = "10";
-  els.pointSize.value = "4";
+  els.pointSize.value = "5";
   els.inputType.value = "document";
 }
 

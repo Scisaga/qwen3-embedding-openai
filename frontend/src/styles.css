@@ -120,6 +120,14 @@ body {
   display: block;
 }
 
+#plot .js-plotly-plot,
+#plot .plot-container,
+#plot .svg-container,
+#plot .main-svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
 h1,
 h2,
 h3 {

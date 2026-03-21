@@ -9,7 +9,7 @@
     "preview": "vite preview --host 0.0.0.0 --port 4173"
   },
   "dependencies": {
-    "regl-scatterplot": "^1.14.0"
+    "plotly.js-dist-min": "^3.4.0"
   },
   "devDependencies": {
     "vite": "^5.4.14"

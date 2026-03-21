@@ -135,34 +135,44 @@ def _extract_vectors(embedding_payload: dict[str, Any], expected_size: int) -> l
     return vectors
 
 
-def _project_by_pca(vectors: list[list[float]]) -> list[tuple[float, float]]:
+def _pad_components(row: list[float], n_components: int) -> tuple[float, ...]:
+    values = [0.0 for _ in range(n_components)]
+    limit = min(n_components, len(row))
+    for i in range(limit):
+        values[i] = float(row[i])
+    return tuple(values)
+
+
+def _project_by_pca(vectors: list[list[float]], n_components: int) -> list[tuple[float, ...]]:
     if len(vectors) <= 1:
-        return [(0.0, 0.0) for _ in vectors]
+        return [tuple(0.0 for _ in range(n_components)) for _ in vectors]
 
     try:
         import numpy as np
     except ImportError:
-        # Fallback when numpy is absent in local dev: project by first two dimensions.
-        projected: list[tuple[float, float]] = []
-        for row in vectors:
-            projected.append((float(row[0]), float(row[1] if len(row) > 1 else 0.0)))
-        return projected
+        # Fallback when numpy is absent in local dev: project by leading dimensions.
+        return [_pad_components(row, n_components) for row in vectors]
 
     matrix = np.asarray(vectors, dtype=float)
     matrix = matrix - matrix.mean(axis=0, keepdims=True)
-    if matrix.shape[1] == 1:
-        column = matrix[:, 0]
-        return [(float(value), 0.0) for value in column]
+    if matrix.shape[1] <= 0:
+        return [tuple(0.0 for _ in range(n_components)) for _ in vectors]
 
     _, _, v_t = np.linalg.svd(matrix, full_matrices=False)
-    basis = v_t[:2].T
+    basis = v_t[:n_components].T
     projected = matrix @ basis
-    return [(float(row[0]), float(row[1])) for row in projected]
+
+    if projected.shape[1] < n_components:
+        padded = np.zeros((projected.shape[0], n_components), dtype=float)
+        padded[:, : projected.shape[1]] = projected
+        projected = padded
+
+    return [tuple(float(value) for value in row[:n_components]) for row in projected]
 
 
-def _project_by_tsne(vectors: list[list[float]], metric: str) -> list[tuple[float, float]]:
-    if len(vectors) <= 2:
-        return _project_by_pca(vectors)
+def _project_by_tsne(vectors: list[list[float]], metric: str, n_components: int) -> list[tuple[float, ...]]:
+    if len(vectors) <= max(3, n_components):
+        return _project_by_pca(vectors, n_components)
 
     try:
         import numpy as np
@@ -176,7 +186,7 @@ def _project_by_tsne(vectors: list[list[float]], metric: str) -> list[tuple[floa
     matrix = np.asarray(vectors, dtype=float)
     perplexity = max(2.0, min(30.0, float(len(vectors) - 1)))
     reducer = TSNE(
-        n_components=2,
+        n_components=n_components,
         metric=metric,
         perplexity=perplexity,
         learning_rate="auto",
@@ -184,12 +194,14 @@ def _project_by_tsne(vectors: list[list[float]], metric: str) -> list[tuple[floa
         random_state=42,
     )
     projected = reducer.fit_transform(matrix)
-    return [(float(row[0]), float(row[1])) for row in projected]
+    return [tuple(float(value) for value in row[:n_components]) for row in projected]
 
 
-def _project_by_umap(vectors: list[list[float]], metric: str, neighbors_k: int) -> list[tuple[float, float]]:
-    if len(vectors) <= 2:
-        return _project_by_pca(vectors)
+def _project_by_umap(
+    vectors: list[list[float]], metric: str, neighbors_k: int, n_components: int
+) -> list[tuple[float, ...]]:
+    if len(vectors) <= max(2, n_components):
+        return _project_by_pca(vectors, n_components)
 
     try:
         import numpy as np
@@ -202,35 +214,39 @@ def _project_by_umap(vectors: list[list[float]], metric: str, neighbors_k: int) 
 
     matrix = np.asarray(vectors, dtype=float)
     n_neighbors = min(max(2, neighbors_k), max(2, len(vectors) - 1))
-    reducer = umap.UMAP(n_components=2, metric=metric, n_neighbors=n_neighbors, random_state=42)
+    reducer = umap.UMAP(n_components=n_components, metric=metric, n_neighbors=n_neighbors, random_state=42)
     projected = reducer.fit_transform(matrix)
-    return [(float(row[0]), float(row[1])) for row in projected]
+    return [tuple(float(value) for value in row[:n_components]) for row in projected]
 
 
-def _project_vectors(vectors: list[list[float]], config: ProjectorConfig) -> list[tuple[float, float]]:
+def _project_vectors(vectors: list[list[float]], config: ProjectorConfig, n_components: int = 2) -> list[tuple[float, ...]]:
+    if n_components < 2:
+        raise ValueError("`n_components` must be >= 2")
     if config.projection_method == "pca":
-        return _project_by_pca(vectors)
+        return _project_by_pca(vectors, n_components)
     if config.projection_method == "tsne":
-        return _project_by_tsne(vectors, config.metric)
-    return _project_by_umap(vectors, config.metric, config.neighbors_k)
+        return _project_by_tsne(vectors, config.metric, n_components)
+    return _project_by_umap(vectors, config.metric, config.neighbors_k, n_components)
 
 
-def _normalize_coordinates(points: list[tuple[float, float]]) -> list[tuple[float, float]]:
+def _normalize_coordinates(points: list[tuple[float, ...]]) -> list[tuple[float, ...]]:
     if not points:
         return []
 
-    xs = [point[0] for point in points]
-    ys = [point[1] for point in points]
-    min_x, max_x = min(xs), max(xs)
-    min_y, max_y = min(ys), max(ys)
-    span_x = max(max_x - min_x, 1e-9)
-    span_y = max(max_y - min_y, 1e-9)
+    dims = len(points[0])
+    mins = [float("inf") for _ in range(dims)]
+    maxs = [float("-inf") for _ in range(dims)]
+    for point in points:
+        for d in range(dims):
+            value = point[d]
+            mins[d] = min(mins[d], value)
+            maxs[d] = max(maxs[d], value)
+    spans = [max(maxs[d] - mins[d], 1e-9) for d in range(dims)]
 
-    normalized: list[tuple[float, float]] = []
-    for x, y in points:
-        nx = ((x - min_x) / span_x) * 2.0 - 1.0
-        ny = ((y - min_y) / span_y) * 2.0 - 1.0
-        normalized.append((nx, ny))
+    normalized: list[tuple[float, ...]] = []
+    for point in points:
+        normalized_point = [((point[d] - mins[d]) / spans[d]) * 2.0 - 1.0 for d in range(dims)]
+        normalized.append(tuple(normalized_point))
     return normalized
 
 
@@ -328,22 +344,24 @@ async def create_projector_payload(
     embedding_payload = _build_embedding_payload(request_payload, inputs)
     embedding_response = await embedder(embedding_payload)
     vectors = _extract_vectors(embedding_response, len(inputs))
-    coordinates = _project_vectors(vectors, config)
+    coordinates = _project_vectors(vectors, config, n_components=3)
     normalized_coordinates = _normalize_coordinates(coordinates)
     neighbors = _compute_neighbors(vectors, config.metric, config.neighbors_k)
 
     points: list[dict[str, Any]] = []
-    for index, (raw_xy, normalized_xy) in enumerate(zip(coordinates, normalized_coordinates)):
+    for index, (raw_xyz, normalized_xyz) in enumerate(zip(coordinates, normalized_coordinates)):
         points.append(
             {
                 "id": str(index),
                 "index": index,
                 "text": inputs[index],
                 "label": labels[index],
-                "x": round(float(raw_xy[0]), 8),
-                "y": round(float(raw_xy[1]), 8),
-                "normalized_x": round(float(normalized_xy[0]), 8),
-                "normalized_y": round(float(normalized_xy[1]), 8),
+                "x": round(float(raw_xyz[0]), 8),
+                "y": round(float(raw_xyz[1]), 8),
+                "z": round(float(raw_xyz[2]), 8),
+                "normalized_x": round(float(normalized_xyz[0]), 8),
+                "normalized_y": round(float(normalized_xyz[1]), 8),
+                "normalized_z": round(float(normalized_xyz[2]), 8),
             }
         )
 
@@ -362,6 +380,7 @@ async def create_projector_payload(
             "point_size": config.point_size,
             "count": len(points),
             "dimensions": dimensions,
+            "projection_dimensions": 3,
             "cache_hit": False,
             "duration_ms": duration_ms,
         },
