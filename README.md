@@ -7,6 +7,9 @@
 - 代码仓库：[`https://github.com/Scisaga/qwen3-embedding-openai`](https://github.com/Scisaga/qwen3-embedding-openai)
 - 镜像仓库（GHCR）：`ghcr.io/scisaga/qwen3-embedding-openai:latest`
 
+![Embedding 调试台](img/README-1774100138637.png)
+![Projector 可视化](img/README-1774100196470.png)
+
 ## 功能
 - OpenAI 兼容 Embeddings API：`POST /v1/embeddings`
 - 3D Projector API：`POST /v1/embeddings/projector`（后端预计算 3D 投影 + 近邻）
