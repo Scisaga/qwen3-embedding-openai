@@ -579,7 +579,7 @@ def _build_index_html() -> str:
         texts: "What is the capital of China?\\nThe capital of China is Beijing.\\nThe Eiffel Tower is located in Paris.",
         inputType: "query",
         instruction: "__DEFAULT_INSTRUCTION__",
-        dimensions: "1024",
+        dimensions: "",
         encodingFormat: "float",
       },
       query_only: {
@@ -588,7 +588,7 @@ def _build_index_html() -> str:
         texts: "How to improve retrieval quality for Chinese documents?",
         inputType: "query",
         instruction: "__DEFAULT_INSTRUCTION__",
-        dimensions: "1024",
+        dimensions: "",
         encodingFormat: "float",
       },
       document_batch: {
@@ -597,7 +597,7 @@ def _build_index_html() -> str:
         texts: "Beijing is the capital of China.\\nShanghai is a major financial center in China.\\nParis is the capital of France.",
         inputType: "document",
         instruction: "",
-        dimensions: "1024",
+        dimensions: "",
         encodingFormat: "float",
       },
       news_similarity: {
@@ -606,7 +606,7 @@ def _build_index_html() -> str:
         texts: "中国央行宣布新的利率政策。\\n央行今日发布利率调整公告。\\n足球联赛将在本周末开赛。",
         inputType: "document",
         instruction: "",
-        dimensions: "768",
+        dimensions: "",
         encodingFormat: "float",
       },
     };
@@ -854,11 +854,18 @@ def _build_index_html() -> str:
         const result = await response.json();
         const latencyMs = Math.round(performance.now() - startedAt);
         if (!response.ok) {
-          showError(result?.error?.message || `HTTP ${response.status}`);
+          const backendMessage = result?.error?.message || `HTTP ${response.status}`;
+          if (backendMessage.includes("does not support matryoshka")) {
+            els.dimensions.value = "";
+            showError(`${backendMessage} 当前模型不支持自定义 dimensions，已自动清空该字段，请重试。`);
+            setStatus("warn", "dimensions disabled");
+          } else {
+            showError(backendMessage);
+            setStatus("bad", "request failed");
+          }
           els.rawOut.textContent = JSON.stringify(result, null, 2);
           els.summaryOut.textContent = "请求失败。";
           renderMatrix(null);
-          setStatus("bad", "request failed");
           return;
         }
 
