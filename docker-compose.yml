@@ -28,8 +28,8 @@ services:
       # 2080 Ti / Turing 上优先避免长时间卡在 startup：
       # - --enforce-eager: 关闭 CUDA graph
       # - --disable-frontend-multiprocessing: 降低前后端分离复杂度
-      # - --max-num-seqs / --max-num-batched-tokens: 缩小调度窗口
-      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 1024 --disable-custom-all-reduce"
+      # - --max-num-seqs / --max-num-batched-tokens: 缩小调度窗口，但 batched tokens 不能小于 max_model_len
+      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096 --disable-custom-all-reduce"
     volumes:
       - ./models:/models
     ipc: host

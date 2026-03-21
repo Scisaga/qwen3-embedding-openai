@@ -194,7 +194,10 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 - `GPU_MEMORY_UTILIZATION`：vLLM 显存利用率，默认 `0.72`
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
-- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数；当前默认包含 `--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 1024`
+- `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数；当前默认包含 `--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096`
+
+注意：
+- 如果你手动设置了 `--max-num-batched-tokens`，它不能小于 `MAX_MODEL_LEN`；否则 vLLM 会在启动阶段直接报错退出。
 
 注意：
 - 不建议再使用 `VLLM_PORT` 作为 wrapper 配置名。`VLLM_PORT` 是 vLLM 自己的运行时环境变量，会影响它的内部端口分配，导致日志里出现类似 `Port 8001 is already in use, trying port 8002` 的误导性信息。

@@ -117,6 +117,35 @@ def _build_backend_env() -> dict[str, str]:
     return env
 
 
+def _get_extra_arg_value(flag: str, extra_args: str) -> Optional[str]:
+    tokens = shlex.split(extra_args or "")
+    for index, token in enumerate(tokens):
+        if token == flag and index + 1 < len(tokens):
+            return tokens[index + 1]
+        if token.startswith(f"{flag}="):
+            return token.split("=", 1)[1]
+    return None
+
+
+def _validate_backend_settings() -> None:
+    raw_batched_tokens = _get_extra_arg_value("--max-num-batched-tokens", _settings.extra_args)
+    if raw_batched_tokens is None:
+        return
+
+    try:
+        max_num_batched_tokens = int(raw_batched_tokens)
+    except ValueError as exc:
+        raise BackendUnavailableError(
+            f"Invalid VLLM_EXTRA_ARGS: --max-num-batched-tokens must be an integer, got {raw_batched_tokens!r}."
+        ) from exc
+
+    if max_num_batched_tokens < _settings.max_model_len:
+        raise BackendUnavailableError(
+            "Invalid vLLM configuration: --max-num-batched-tokens "
+            f"({max_num_batched_tokens}) must be >= max_model_len ({_settings.max_model_len})."
+        )
+
+
 def _build_vllm_command() -> list[str]:
     command = [
         "vllm",
@@ -194,6 +223,7 @@ def _start_backend_process_locked() -> None:
     if _backend_alive():
         return
 
+    _validate_backend_settings()
     command = _build_vllm_command()
     try:
         _backend_process = subprocess.Popen(

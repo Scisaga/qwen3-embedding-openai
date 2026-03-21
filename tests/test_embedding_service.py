@@ -57,3 +57,15 @@ def test_build_backend_env_strips_vllm_port(monkeypatch):
     backend_env = embedding_service._build_backend_env()
 
     assert "VLLM_PORT" not in backend_env
+
+
+def test_validate_backend_settings_rejects_batched_tokens_smaller_than_max_model_len(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "max_model_len", 4096)
+    monkeypatch.setattr(
+        embedding_service._settings,
+        "extra_args",
+        "--enforce-eager --max-num-batched-tokens 1024",
+    )
+
+    with pytest.raises(embedding_service.BackendUnavailableError):
+        embedding_service._validate_backend_settings()
