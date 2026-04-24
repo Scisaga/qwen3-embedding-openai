@@ -69,3 +69,36 @@ def test_validate_backend_settings_rejects_batched_tokens_smaller_than_max_model
 
     with pytest.raises(embedding_service.BackendUnavailableError):
         embedding_service._validate_backend_settings()
+
+
+def test_build_vllm_command_auto_enables_qwen3_matryoshka(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "model_id", "Qwen/Qwen3-Embedding-8B")
+    monkeypatch.setattr(embedding_service._settings, "extra_args", "--enforce-eager")
+
+    command = embedding_service._build_vllm_command()
+
+    assert "--hf_overrides" in command
+    override_index = command.index("--hf_overrides")
+    assert command[override_index + 1] == '{"is_matryoshka": true}'
+
+
+def test_build_vllm_command_does_not_duplicate_existing_hf_overrides(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "model_id", "Qwen/Qwen3-Embedding-8B")
+    monkeypatch.setattr(
+        embedding_service._settings,
+        "extra_args",
+        '--hf_overrides {"matryoshka_dimensions":[1024]}',
+    )
+
+    command = embedding_service._build_vllm_command()
+
+    assert command.count("--hf_overrides") == 1
+
+
+def test_build_vllm_command_leaves_non_qwen_models_unchanged(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "model_id", "BAAI/bge-m3")
+    monkeypatch.setattr(embedding_service._settings, "extra_args", "--enforce-eager")
+
+    command = embedding_service._build_vllm_command()
+
+    assert "--hf_overrides" not in command

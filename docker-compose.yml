@@ -31,7 +31,8 @@ services:
       # - --enforce-eager: 关闭 CUDA graph
       # - --disable-frontend-multiprocessing: 降低前后端分离复杂度
       # - --max-num-seqs / --max-num-batched-tokens: 缩小调度窗口，但 batched tokens 不能小于 max_model_len
-      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096 --disable-custom-all-reduce"
+      # - --hf_overrides '{"is_matryoshka": true}': 让 Qwen3-Embedding-* 在 vLLM 中正确接受 dimensions 参数
+      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096 --disable-custom-all-reduce --hf_overrides '{\"is_matryoshka\": true}'"
     volumes:
       - ./models:/models
     ipc: host

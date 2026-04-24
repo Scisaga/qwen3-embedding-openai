@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 import shlex
 import subprocess
@@ -46,6 +47,7 @@ _backend_started_at: Optional[float] = None
 _backend_ready = False
 _backend_last_error = ""
 _backend_probe_path = ""
+_MATRYOSHKA_OVERRIDE_FLAG_ALIASES = ("--hf_overrides", "--hf-overrides")
 
 
 class InputValidationError(ValueError):
@@ -128,6 +130,26 @@ def _get_extra_arg_value(flag: str, extra_args: str) -> Optional[str]:
     return None
 
 
+def _has_extra_arg(flags: tuple[str, ...], extra_args: str) -> bool:
+    tokens = shlex.split(extra_args or "")
+    for token in tokens:
+        if token in flags:
+            return True
+        for flag in flags:
+            if token.startswith(f"{flag}="):
+                return True
+    return False
+
+
+def _should_enable_qwen3_matryoshka_override(model_id: str, extra_args: str) -> bool:
+    normalized_model_id = (model_id or "").strip().lower()
+    if not normalized_model_id.startswith("qwen/qwen3-embedding-"):
+        return False
+    if _has_extra_arg(_MATRYOSHKA_OVERRIDE_FLAG_ALIASES, extra_args):
+        return False
+    return True
+
+
 def _validate_backend_settings() -> None:
     raw_batched_tokens = _get_extra_arg_value("--max-num-batched-tokens", _settings.extra_args)
     if raw_batched_tokens is None:
@@ -148,6 +170,8 @@ def _validate_backend_settings() -> None:
 
 
 def _build_vllm_command() -> list[str]:
+    extra_args = _settings.extra_args.strip()
+    extra_tokens = shlex.split(extra_args) if extra_args else []
     command = [
         "vllm",
         "serve",
@@ -171,8 +195,10 @@ def _build_vllm_command() -> list[str]:
         command.extend(["--revision", _settings.model_revision])
     if _env_flag("TRUST_REMOTE_CODE", "0"):
         command.append("--trust-remote-code")
-    if _settings.extra_args.strip():
-        command.extend(shlex.split(_settings.extra_args))
+    if _should_enable_qwen3_matryoshka_override(_settings.model_id, extra_args):
+        command.extend(["--hf_overrides", json.dumps({"is_matryoshka": True})])
+    if extra_tokens:
+        command.extend(extra_tokens)
     return command
 
 

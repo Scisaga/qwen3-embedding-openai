@@ -27,6 +27,8 @@
 docker compose up -d --build
 ```
 
+说明：仓库默认会为 `Qwen3-Embedding-*` 注入 vLLM 的 `hf_overrides={"is_matryoshka": true}`，避免旧版本 vLLM 误判 Qwen3 不支持自定义 `dimensions`。
+
 如果机器需要走代理才能访问 Hugging Face，可在同目录创建 `.env`（或启动前导出环境变量）：
 
 ```bash
@@ -187,6 +189,14 @@ docker run -d --name qwen3_embedding_openai \
   -v ./models:/models \
   ghcr.io/scisaga/qwen3-embedding-openai:latest
 ```
+
+如果你绕过本仓库、直接调用原生 `vllm serve` 启动 `Qwen3-Embedding-*`，请显式追加：
+
+```bash
+--hf_overrides '{"is_matryoshka": true}'
+```
+
+否则某些 vLLM 版本会把 `dimensions=1024` 这类请求误判为不支持，返回 HTTP 400。
 
 ## 切换模型（需重启）
 在 `docker-compose.yml` 中修改 `MODEL_ID`，然后：
