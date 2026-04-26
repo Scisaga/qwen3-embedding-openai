@@ -27,6 +27,11 @@ services:
       ADMIN_TOKEN: "change-me"
       HTTP_PROXY: ${HTTP_PROXY:-}
       NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1}
+      # 默认行为：
+      # - 当容器可见多张 GPU 且未显式设置 tensor/pipeline parallel 时，
+      #   wrapper 会按“每张卡 1 个 vLLM 实例”启动，并在外层做轮询分发
+      # - 如果你只想保留单实例，可设置 AUTO_BACKEND_REPLICAS=0
+      # - 如果你明确要让单个 vLLM 实例跨卡切模型，再手动追加 --tensor-parallel-size / --pipeline-parallel-size
       # 2080 Ti / Turing 上优先避免长时间卡在 startup：
       # - --enforce-eager: 关闭 CUDA graph
       # - --disable-frontend-multiprocessing: 降低前后端分离复杂度
@@ -42,6 +47,6 @@ services:
           devices:
             - driver: nvidia
               # 选卡：宿主机第 1 张卡写 "0"，第 2 张卡写 "1"
-              # 当前固定绑定宿主机第 2 张卡
+              # 如果这里写 ["0","1"]，默认会在两张卡上各起 1 个 vLLM 实例并支持并发推理
               device_ids: ["1"]
               capabilities: [gpu]

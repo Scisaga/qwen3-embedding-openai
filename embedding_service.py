@@ -41,13 +41,20 @@ MANAGE_BACKEND_PROCESS = (
 PRELOAD_MODEL = os.getenv("PRELOAD_MODEL", "1").strip().lower() not in ("0", "false", "no", "off")
 
 _DEFAULT_BACKEND_PATH = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
+_AUTO_BACKEND_REPLICAS_ENV = "AUTO_BACKEND_REPLICAS"
+_BACKEND_REPLICA_COUNT_ENV = "BACKEND_REPLICA_COUNT"
+_MODEL_PARALLEL_FLAG_ALIASES = (
+    ("--tensor-parallel-size", "--tensor_parallel_size"),
+    ("--pipeline-parallel-size", "--pipeline_parallel_size"),
+)
+_MATRYOSHKA_OVERRIDE_FLAG_ALIASES = ("--hf_overrides", "--hf-overrides")
 _backend_lock = threading.RLock()
-_backend_process: Optional[subprocess.Popen[Any]] = None
+_backend_replicas: list["BackendReplica"] = []
+_backend_router_index = 0
 _backend_started_at: Optional[float] = None
 _backend_ready = False
 _backend_last_error = ""
 _backend_probe_path = ""
-_MATRYOSHKA_OVERRIDE_FLAG_ALIASES = ("--hf_overrides", "--hf-overrides")
 
 
 class InputValidationError(ValueError):
@@ -82,6 +89,20 @@ class BackendSettings:
     backend_base_url: str = VLLM_BASE_URL or _DEFAULT_BACKEND_PATH
 
 
+@dataclass
+class BackendReplica:
+    replica_index: int
+    port: int
+    base_url: str
+    device_identifier: Optional[str] = None
+    process: Optional[subprocess.Popen[Any]] = None
+    started_at: Optional[float] = None
+    ready: bool = False
+    last_error: str = ""
+    probe_path: str = ""
+    health: Optional[dict[str, Any]] = None
+
+
 _settings = BackendSettings()
 
 
@@ -108,7 +129,7 @@ def _apply_proxy_env(target_env: Optional[dict[str, str]] = None) -> dict[str, s
     return env
 
 
-def _build_backend_env() -> dict[str, str]:
+def _build_backend_env(device_identifier: Optional[str] = None) -> dict[str, str]:
     env = _apply_proxy_env(dict(os.environ))
     env["HF_HOME"] = _settings.hf_home
     env.setdefault("VLLM_LOGGING_LEVEL", "INFO")
@@ -117,6 +138,8 @@ def _build_backend_env() -> dict[str, str]:
     # allocation, which triggers misleading logs like "Port 8001 is already in
     # use, trying port 8002" after the API server has already bound 8001.
     env.pop("VLLM_PORT", None)
+    if device_identifier is not None:
+        env["CUDA_VISIBLE_DEVICES"] = device_identifier
     return env
 
 
@@ -127,6 +150,14 @@ def _get_extra_arg_value(flag: str, extra_args: str) -> Optional[str]:
             return tokens[index + 1]
         if token.startswith(f"{flag}="):
             return token.split("=", 1)[1]
+    return None
+
+
+def _get_first_extra_arg_value(flags: tuple[str, ...], extra_args: str) -> Optional[str]:
+    for flag in flags:
+        value = _get_extra_arg_value(flag, extra_args)
+        if value is not None:
+            return value
     return None
 
 
@@ -141,6 +172,19 @@ def _has_extra_arg(flags: tuple[str, ...], extra_args: str) -> bool:
     return False
 
 
+def _requested_model_parallelism(extra_args: str) -> bool:
+    for aliases in _MODEL_PARALLEL_FLAG_ALIASES:
+        raw_value = _get_first_extra_arg_value(aliases, extra_args)
+        if raw_value is None:
+            continue
+        try:
+            if int(raw_value) > 1:
+                return True
+        except ValueError:
+            return True
+    return False
+
+
 def _should_enable_qwen3_matryoshka_override(model_id: str, extra_args: str) -> bool:
     normalized_model_id = (model_id or "").strip().lower()
     if not normalized_model_id.startswith("qwen/qwen3-embedding-"):
@@ -150,26 +194,178 @@ def _should_enable_qwen3_matryoshka_override(model_id: str, extra_args: str) -> 
     return True
 
 
-def _validate_backend_settings() -> None:
-    raw_batched_tokens = _get_extra_arg_value("--max-num-batched-tokens", _settings.extra_args)
-    if raw_batched_tokens is None:
-        return
-
+def _backend_replica_count_override() -> Optional[int]:
+    raw_value = os.getenv(_BACKEND_REPLICA_COUNT_ENV, "").strip()
+    if not raw_value:
+        return None
     try:
-        max_num_batched_tokens = int(raw_batched_tokens)
+        count = int(raw_value)
     except ValueError as exc:
         raise BackendUnavailableError(
-            f"Invalid VLLM_EXTRA_ARGS: --max-num-batched-tokens must be an integer, got {raw_batched_tokens!r}."
+            f"Invalid {_BACKEND_REPLICA_COUNT_ENV}: expected positive integer, got {raw_value!r}."
         ) from exc
-
-    if max_num_batched_tokens < _settings.max_model_len:
+    if count < 1:
         raise BackendUnavailableError(
-            "Invalid vLLM configuration: --max-num-batched-tokens "
-            f"({max_num_batched_tokens}) must be >= max_model_len ({_settings.max_model_len})."
+            f"Invalid {_BACKEND_REPLICA_COUNT_ENV}: expected positive integer, got {raw_value!r}."
         )
+    return count
 
 
-def _build_vllm_command() -> list[str]:
+def _detect_visible_gpu_identifiers() -> list[str]:
+    try:
+        probe_env = _apply_proxy_env(dict(os.environ))
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=uuid", "--format=csv,noheader"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=probe_env,
+        )
+        if result.returncode == 0:
+            identifiers = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+            if identifiers:
+                return identifiers
+    except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+        pass
+
+    for env_name in ("CUDA_VISIBLE_DEVICES", "NVIDIA_VISIBLE_DEVICES"):
+        raw_value = os.getenv(env_name, "").strip()
+        if not raw_value:
+            continue
+        lowered = raw_value.lower()
+        if lowered in ("none", "void"):
+            return []
+        if lowered == "all":
+            continue
+        identifiers = [token.strip() for token in raw_value.split(",") if token.strip()]
+        if identifiers:
+            return identifiers
+    return []
+
+
+def _desired_backend_device_identifiers() -> list[Optional[str]]:
+    if not _settings.manage_backend_process:
+        return [None]
+
+    requested_parallelism = _requested_model_parallelism(_settings.extra_args)
+    replica_override = _backend_replica_count_override()
+    if requested_parallelism:
+        if replica_override is not None and replica_override > 1:
+            raise BackendUnavailableError(
+                f"{_BACKEND_REPLICA_COUNT_ENV} cannot exceed 1 when tensor/pipeline parallelism is enabled."
+            )
+        return [None]
+
+    if replica_override == 1:
+        return [None]
+    if replica_override is None and not _env_flag(_AUTO_BACKEND_REPLICAS_ENV, "1"):
+        return [None]
+
+    identifiers = _detect_visible_gpu_identifiers()
+    if replica_override is not None:
+        if identifiers and replica_override > len(identifiers):
+            raise BackendUnavailableError(
+                f"{_BACKEND_REPLICA_COUNT_ENV}={replica_override} exceeds visible GPU count ({len(identifiers)})."
+            )
+        if identifiers:
+            return identifiers[:replica_override]
+        return [str(index) for index in range(replica_override)]
+
+    if len(identifiers) <= 1:
+        return [None]
+    return identifiers
+
+
+def _build_backend_replicas_layout() -> list[BackendReplica]:
+    device_identifiers = _desired_backend_device_identifiers()
+    return [
+        BackendReplica(
+            replica_index=index,
+            port=_settings.backend_port + index,
+            base_url=f"http://{_settings.backend_host}:{_settings.backend_port + index}",
+            device_identifier=device_identifier,
+        )
+        for index, device_identifier in enumerate(device_identifiers)
+    ]
+
+
+def _same_replica_layout(current: list[BackendReplica], desired: list[BackendReplica]) -> bool:
+    if len(current) != len(desired):
+        return False
+    for current_replica, desired_replica in zip(current, desired):
+        if current_replica.port != desired_replica.port:
+            return False
+        if current_replica.device_identifier != desired_replica.device_identifier:
+            return False
+    return True
+
+
+def _replica_alive(replica: BackendReplica) -> bool:
+    return replica.process is not None and replica.process.poll() is None
+
+
+def _refresh_backend_summary_locked() -> None:
+    global _backend_ready, _backend_last_error, _backend_probe_path, _backend_started_at
+
+    if not _settings.manage_backend_process:
+        return
+
+    ready_replicas = [replica for replica in _backend_replicas if replica.ready]
+    _backend_ready = bool(ready_replicas)
+    _backend_probe_path = next(
+        (replica.probe_path for replica in ready_replicas if replica.probe_path),
+        next((replica.probe_path for replica in _backend_replicas if replica.probe_path), ""),
+    )
+    if ready_replicas:
+        _backend_last_error = ""
+        _settings.backend_base_url = ready_replicas[0].base_url
+    else:
+        _backend_last_error = next((replica.last_error for replica in _backend_replicas if replica.last_error), "")
+        if _backend_replicas:
+            _settings.backend_base_url = _backend_replicas[0].base_url
+
+    started_at_values = [replica.started_at for replica in _backend_replicas if replica.started_at is not None]
+    _backend_started_at = min(started_at_values) if started_at_values else None
+
+
+def _ensure_backend_layout_locked() -> None:
+    global _backend_replicas, _backend_router_index
+
+    if not _settings.manage_backend_process:
+        _backend_replicas = []
+        _backend_router_index = 0
+        return
+
+    desired_layout = _build_backend_replicas_layout()
+    if _same_replica_layout(_backend_replicas, desired_layout):
+        return
+
+    _backend_replicas = desired_layout
+    _backend_router_index = 0
+    _refresh_backend_summary_locked()
+
+
+def _validate_backend_settings() -> None:
+    raw_batched_tokens = _get_extra_arg_value("--max-num-batched-tokens", _settings.extra_args)
+    if raw_batched_tokens is not None:
+        try:
+            max_num_batched_tokens = int(raw_batched_tokens)
+        except ValueError as exc:
+            raise BackendUnavailableError(
+                f"Invalid VLLM_EXTRA_ARGS: --max-num-batched-tokens must be an integer, got {raw_batched_tokens!r}."
+            ) from exc
+
+        if max_num_batched_tokens < _settings.max_model_len:
+            raise BackendUnavailableError(
+                "Invalid vLLM configuration: --max-num-batched-tokens "
+                f"({max_num_batched_tokens}) must be >= max_model_len ({_settings.max_model_len})."
+            )
+
+    _desired_backend_device_identifiers()
+
+
+def _build_vllm_command(port: Optional[int] = None) -> list[str]:
     extra_args = _settings.extra_args.strip()
     extra_tokens = shlex.split(extra_args) if extra_args else []
     command = [
@@ -179,7 +375,7 @@ def _build_vllm_command() -> list[str]:
         "--host",
         _settings.backend_host,
         "--port",
-        str(_settings.backend_port),
+        str(port if port is not None else _settings.backend_port),
         "--task",
         "embed",
         "--dtype",
@@ -203,7 +399,7 @@ def _build_vllm_command() -> list[str]:
 
 
 def _backend_alive() -> bool:
-    return _backend_process is not None and _backend_process.poll() is None
+    return any(_replica_alive(replica) for replica in _backend_replicas)
 
 
 def _mark_backend_not_ready(message: str = "") -> None:
@@ -242,96 +438,157 @@ def _backend_message(
 
 
 def _start_backend_process_locked() -> None:
-    global _backend_process, _backend_started_at, _backend_last_error, _backend_ready
+    global _backend_last_error
 
     if not _settings.manage_backend_process:
         return
 
-    if _backend_alive():
-        return
-
     _validate_backend_settings()
-    command = _build_vllm_command()
-    try:
-        _backend_process = subprocess.Popen(
-            command,
-            env=_build_backend_env(),
-            stdin=subprocess.DEVNULL,
-            stdout=None,
-            stderr=None,
-            start_new_session=True,
-        )
-    except FileNotFoundError as exc:
-        _backend_process = None
-        _backend_ready = False
-        _backend_last_error = "Failed to start vLLM: `vllm` command not found."
-        raise BackendUnavailableError(_backend_last_error) from exc
+    _ensure_backend_layout_locked()
 
-    _backend_started_at = time.time()
-    _backend_ready = False
+    for replica in _backend_replicas:
+        if _replica_alive(replica):
+            continue
+
+        command = _build_vllm_command(port=replica.port)
+        try:
+            replica.process = subprocess.Popen(
+                command,
+                env=_build_backend_env(replica.device_identifier),
+                stdin=subprocess.DEVNULL,
+                stdout=None,
+                stderr=None,
+                start_new_session=True,
+            )
+        except FileNotFoundError as exc:
+            replica.process = None
+            replica.ready = False
+            replica.last_error = "Failed to start vLLM: `vllm` command not found."
+            _backend_last_error = replica.last_error
+            raise BackendUnavailableError(_backend_last_error) from exc
+
+        replica.started_at = time.time()
+        replica.ready = False
+        replica.last_error = ""
+        replica.probe_path = ""
+        replica.health = None
+
     _backend_last_error = ""
+    _refresh_backend_summary_locked()
 
 
 def _stop_backend_process_locked() -> None:
-    global _backend_process, _backend_ready
+    for replica in _backend_replicas:
+        proc = replica.process
+        replica.process = None
+        replica.ready = False
+        replica.health = None
+        replica.probe_path = ""
 
-    proc = _backend_process
-    _backend_process = None
-    _backend_ready = False
+        if proc is None:
+            continue
+        if proc.poll() is not None:
+            continue
 
-    if proc is None:
-        return
+        proc.terminate()
+        try:
+            proc.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
 
-    if proc.poll() is not None:
-        return
+    _refresh_backend_summary_locked()
 
-    proc.terminate()
-    try:
-        proc.wait(timeout=20)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait(timeout=10)
+
+async def _probe_single_backend_health(
+    client: httpx.AsyncClient,
+    base_url: str,
+) -> tuple[bool, Optional[dict[str, Any]], str, str]:
+    probe_paths = ["/health", "/v1/models"]
+    last_message = ""
+    for path in probe_paths:
+        try:
+            response = await client.get(f"{base_url}{path}")
+        except httpx.HTTPError as exc:
+            last_message = str(exc)
+            continue
+
+        if response.status_code == 404:
+            last_message = f"{path} returned HTTP 404 on {base_url}"
+            continue
+        if response.status_code >= 400:
+            last_message = f"{path} returned HTTP {response.status_code} on {base_url}"
+            continue
+
+        payload: Optional[dict[str, Any]]
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+
+        return True, payload, "", path
+
+    return False, None, last_message or "All connection attempts failed", ""
+
+
+def _probe_base_urls() -> list[str]:
+    base_urls = [_settings.backend_base_url.rstrip("/")]
+    if BACKEND_PORT_SCAN_WINDOW <= 0 or _settings.backend_base_url != _DEFAULT_BACKEND_PATH:
+        return base_urls
+
+    for offset in range(1, max(0, BACKEND_PORT_SCAN_WINDOW) + 1):
+        base_urls.append(f"http://{_settings.backend_host}:{_settings.backend_port + offset}")
+    return base_urls
 
 
 async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
     global _backend_probe_path
     timeout = httpx.Timeout(3.0, connect=1.0)
-    ports_to_try = [_settings.backend_port]
-    for offset in range(1, max(0, BACKEND_PORT_SCAN_WINDOW) + 1):
-        ports_to_try.append(_settings.backend_port + offset)
 
-    probe_paths = ["/health", "/v1/models"]
-    last_message = ""
+    if not _settings.manage_backend_process:
+        last_message = ""
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            for base_url in _probe_base_urls():
+                healthy, payload, message, probe_path = await _probe_single_backend_health(client, base_url)
+                if healthy:
+                    _settings.backend_base_url = base_url
+                    _backend_probe_path = probe_path
+                    return True, payload, ""
+                last_message = message
+
+        _backend_probe_path = ""
+        return False, None, last_message or "All connection attempts failed"
+
     async with httpx.AsyncClient(timeout=timeout) as client:
-        for port in ports_to_try:
-            base_url = f"http://{_settings.backend_host}:{port}"
-            for path in probe_paths:
-                try:
-                    response = await client.get(f"{base_url}{path}")
-                except httpx.HTTPError as exc:
-                    last_message = str(exc)
-                    continue
+        results: list[tuple[BackendReplica, bool, Optional[dict[str, Any]], str, str]] = []
+        for replica in list(_backend_replicas):
+            healthy, payload, message, probe_path = await _probe_single_backend_health(client, replica.base_url)
+            results.append((replica, healthy, payload, message, probe_path))
 
-                if response.status_code == 404:
-                    last_message = f"{path} returned HTTP 404 on {base_url}"
-                    continue
-                if response.status_code >= 400:
-                    last_message = f"{path} returned HTTP {response.status_code} on {base_url}"
-                    continue
+    healthy_payload: Optional[dict[str, Any]] = None
+    healthy_probe_path = ""
+    first_error = ""
+    for replica, healthy, payload, message, probe_path in results:
+        replica.ready = healthy
+        replica.health = payload if healthy else None
+        replica.probe_path = probe_path
+        if healthy:
+            replica.last_error = ""
+            if healthy_payload is None:
+                healthy_payload = payload
+                healthy_probe_path = probe_path
+        elif message:
+            replica.last_error = message
+            if not first_error:
+                first_error = message
 
-                payload: Optional[dict[str, Any]]
-                try:
-                    payload = response.json()
-                except ValueError:
-                    payload = None
+    _refresh_backend_summary_locked()
+    _backend_probe_path = healthy_probe_path or next(
+        (replica.probe_path for replica in _backend_replicas if replica.probe_path),
+        "",
+    )
 
-                _settings.backend_base_url = base_url
-                _backend_probe_path = path
-                return True, payload, ""
-
-    _backend_probe_path = ""
-
-    return False, None, last_message or "All connection attempts failed"
+    return healthy_payload is not None, healthy_payload, first_error or "All connection attempts failed"
 
 
 async def wait_for_backend_ready(timeout_s: Optional[float] = None) -> None:
@@ -348,13 +605,25 @@ async def wait_for_backend_ready(timeout_s: Optional[float] = None) -> None:
     deadline = time.monotonic() + float(timeout_s or BACKEND_START_TIMEOUT)
     while time.monotonic() < deadline:
         with _backend_lock:
-            proc = _backend_process
-            if proc is None:
+            replicas = list(_backend_replicas)
+
+        if not replicas:
+            _mark_backend_not_ready("Backend process is not configured.")
+            raise BackendUnavailableError(_backend_last_error)
+
+        alive_replicas = [replica for replica in replicas if _replica_alive(replica)]
+        if not alive_replicas:
+            exited_replica = next(
+                (replica for replica in replicas if replica.process is not None and replica.process.poll() is not None),
+                None,
+            )
+            if exited_replica is not None and exited_replica.process is not None:
+                _mark_backend_not_ready(
+                    f"vLLM replica {exited_replica.replica_index} exited with code {exited_replica.process.returncode}."
+                )
+            else:
                 _mark_backend_not_ready("Backend process is not running.")
-                raise BackendUnavailableError(_backend_last_error)
-            if proc.poll() is not None:
-                _mark_backend_not_ready(f"vLLM exited with code {proc.returncode}.")
-                raise BackendUnavailableError(_backend_last_error)
+            raise BackendUnavailableError(_backend_last_error)
 
         healthy, _, message = await _probe_backend_health()
         if healthy:
@@ -401,6 +670,8 @@ def get_current_settings() -> dict[str, Any]:
     snapshot = asdict(_settings)
     snapshot["public_host"] = HOST
     snapshot["public_port"] = PORT
+    snapshot["auto_backend_replicas"] = _env_flag(_AUTO_BACKEND_REPLICAS_ENV, "1")
+    snapshot["backend_replica_count"] = len(_build_backend_replicas_layout()) if _settings.manage_backend_process else 1
     return snapshot
 
 
@@ -477,21 +748,23 @@ def prepare_backend_payload(request_payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-async def _post_embeddings(payload: dict[str, Any], timeout_s: Optional[float] = None) -> dict[str, Any]:
+async def _post_embeddings_to_base_url(
+    base_url: str,
+    payload: dict[str, Any],
+    timeout_s: Optional[float] = None,
+) -> dict[str, Any]:
     timeout = httpx.Timeout(timeout_s or BACKEND_HTTP_TIMEOUT, connect=5.0)
-    base_url = _settings.backend_base_url.rstrip("/")
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
-            response = await client.post(f"{base_url}/v1/embeddings", json=payload)
+            response = await client.post(f"{base_url.rstrip('/')}/v1/embeddings", json=payload)
     except httpx.HTTPError as exc:
-        _mark_backend_not_ready(str(exc))
-        raise BackendUnavailableError(f"Failed to reach vLLM backend: {exc}") from exc
+        raise BackendUnavailableError(f"Failed to reach vLLM backend {base_url}: {exc}") from exc
 
     if response.status_code >= 400:
         try:
-            payload = response.json()
+            error_payload = response.json()
         except ValueError:
-            payload = {
+            error_payload = {
                 "error": {
                     "message": response.text or f"Backend returned HTTP {response.status_code}",
                     "type": "backend_error",
@@ -502,13 +775,68 @@ async def _post_embeddings(payload: dict[str, Any], timeout_s: Optional[float] =
         raise BackendProxyError(
             f"Backend returned HTTP {response.status_code}",
             status_code=response.status_code,
-            payload=payload,
+            payload=error_payload,
         )
 
     try:
         return response.json()
     except ValueError as exc:
         raise BackendProxyError("Backend returned non-JSON response.", status_code=502) from exc
+
+
+def _ordered_backend_candidates_locked() -> list[BackendReplica]:
+    global _backend_router_index
+
+    if not _backend_replicas:
+        return []
+
+    ready_replicas = [replica for replica in _backend_replicas if replica.ready]
+    candidates = ready_replicas or [replica for replica in _backend_replicas if _replica_alive(replica)] or list(
+        _backend_replicas
+    )
+    start_index = _backend_router_index % len(candidates)
+    ordered = candidates[start_index:] + candidates[:start_index]
+    _backend_router_index = (_backend_router_index + 1) % len(candidates)
+    return ordered
+
+
+async def _post_embeddings(payload: dict[str, Any], timeout_s: Optional[float] = None) -> dict[str, Any]:
+    global _backend_ready, _backend_last_error
+
+    if not _settings.manage_backend_process:
+        response_payload = await _post_embeddings_to_base_url(_settings.backend_base_url, payload, timeout_s=timeout_s)
+        _backend_ready = True
+        _backend_last_error = ""
+        return response_payload
+
+    with _backend_lock:
+        candidates = _ordered_backend_candidates_locked()
+
+    if not candidates:
+        _mark_backend_not_ready("No managed vLLM backends are configured.")
+        raise BackendUnavailableError(_backend_last_error)
+
+    last_unavailable: Optional[BackendUnavailableError] = None
+    for replica in candidates:
+        try:
+            response_payload = await _post_embeddings_to_base_url(replica.base_url, payload, timeout_s=timeout_s)
+        except BackendUnavailableError as exc:
+            replica.ready = False
+            replica.last_error = str(exc)
+            last_unavailable = exc
+            continue
+
+        replica.ready = True
+        replica.last_error = ""
+        _settings.backend_base_url = replica.base_url
+        _backend_ready = True
+        _backend_last_error = ""
+        return response_payload
+
+    _mark_backend_not_ready(str(last_unavailable) if last_unavailable is not None else "No vLLM backend is reachable.")
+    if last_unavailable is not None:
+        raise last_unavailable
+    raise BackendUnavailableError(_backend_last_error)
 
 
 async def create_embeddings(request_payload: dict[str, Any]) -> dict[str, Any]:
@@ -552,6 +880,33 @@ async def embed_texts(
     return await create_embeddings(payload)
 
 
+def _managed_backend_runtime_locked() -> tuple[Optional[int], Optional[int], bool, int, list[dict[str, Any]]]:
+    details: list[dict[str, Any]] = []
+    for replica in _backend_replicas:
+        process_alive = _replica_alive(replica)
+        exit_code = replica.process.poll() if replica.process is not None else None
+        details.append(
+            {
+                "replica_index": replica.replica_index,
+                "base_url": replica.base_url,
+                "port": replica.port,
+                "device_identifier": replica.device_identifier,
+                "ready": replica.ready,
+                "process_alive": process_alive,
+                "pid": replica.process.pid if replica.process is not None else None,
+                "exit_code": exit_code,
+                "probe_path": replica.probe_path,
+                "last_error": replica.last_error,
+            }
+        )
+
+    backend_pid = details[0]["pid"] if details else None
+    backend_exit_code = next((detail["exit_code"] for detail in details if detail["exit_code"] is not None), None)
+    backend_process_alive = any(detail["process_alive"] for detail in details)
+    backend_ready_count = sum(1 for detail in details if detail["ready"])
+    return backend_pid, backend_exit_code, backend_process_alive, backend_ready_count, details
+
+
 async def get_health_payload() -> dict[str, Any]:
     healthy, backend_health, message = await _probe_backend_health()
     if healthy:
@@ -566,11 +921,17 @@ async def get_health_payload() -> dict[str, Any]:
     backend_pid: Optional[int] = None
     backend_exit_code: Optional[int] = None
     backend_process_alive = False
+    backend_ready_count = 1 if healthy else 0
+    backend_replica_details: list[dict[str, Any]] = []
     with _backend_lock:
-        if _backend_process is not None:
-            backend_pid = _backend_process.pid
-            backend_exit_code = _backend_process.poll()
-            backend_process_alive = backend_exit_code is None
+        if _settings.manage_backend_process:
+            (
+                backend_pid,
+                backend_exit_code,
+                backend_process_alive,
+                backend_ready_count,
+                backend_replica_details,
+            ) = _managed_backend_runtime_locked()
 
     backend_state = _backend_state(healthy, backend_process_alive, backend_exit_code)
     backend_message = _backend_message(healthy, backend_process_alive, backend_exit_code, message)
@@ -579,14 +940,18 @@ async def get_health_payload() -> dict[str, Any]:
         "status": "ok" if healthy else "degraded",
         "backend": "vllm",
         "backend_ready": healthy,
+        "backend_ready_count": backend_ready_count,
+        "backend_replica_count": len(backend_replica_details) if backend_replica_details else 1,
         "backend_state": backend_state,
         "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
+        "backend_urls": [detail["base_url"] for detail in backend_replica_details] or [_settings.backend_base_url],
         "backend_probe_path": _backend_probe_path,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
         "backend_last_error": backend_message,
         "backend_health": backend_health,
+        "backend_replicas": backend_replica_details,
         "model_id": _settings.model_id,
         "model_revision": _settings.model_revision,
         "port": PORT,
@@ -599,6 +964,7 @@ async def get_health_payload() -> dict[str, Any]:
         "default_query_instruction": _settings.default_query_instruction,
         "manage_backend_process": _settings.manage_backend_process,
         "preload_model": _settings.preload_model,
+        "auto_backend_replicas": _env_flag(_AUTO_BACKEND_REPLICAS_ENV, "1"),
         "started_at": _backend_started_at,
         "server_time": datetime.now().astimezone().isoformat(),
         "timezone": datetime.now().astimezone().tzname(),
@@ -609,11 +975,17 @@ def get_health_snapshot() -> dict[str, Any]:
     backend_pid: Optional[int] = None
     backend_exit_code: Optional[int] = None
     backend_process_alive = False
+    backend_ready_count = 1 if _backend_ready else 0
+    backend_replica_details: list[dict[str, Any]] = []
     with _backend_lock:
-        if _backend_process is not None:
-            backend_pid = _backend_process.pid
-            backend_exit_code = _backend_process.poll()
-            backend_process_alive = backend_exit_code is None
+        if _settings.manage_backend_process:
+            (
+                backend_pid,
+                backend_exit_code,
+                backend_process_alive,
+                backend_ready_count,
+                backend_replica_details,
+            ) = _managed_backend_runtime_locked()
 
     backend_state = _backend_state(_backend_ready, backend_process_alive, backend_exit_code)
     backend_message = _backend_message(_backend_ready, backend_process_alive, backend_exit_code, "")
@@ -622,13 +994,17 @@ def get_health_snapshot() -> dict[str, Any]:
         "status": "ok" if _backend_ready else "degraded",
         "backend": "vllm",
         "backend_ready": _backend_ready,
+        "backend_ready_count": backend_ready_count,
+        "backend_replica_count": len(backend_replica_details) if backend_replica_details else 1,
         "backend_state": backend_state,
         "backend_process_alive": backend_process_alive,
         "backend_url": _settings.backend_base_url,
+        "backend_urls": [detail["base_url"] for detail in backend_replica_details] or [_settings.backend_base_url],
         "backend_probe_path": _backend_probe_path,
         "backend_pid": backend_pid,
         "backend_exit_code": backend_exit_code,
         "backend_last_error": backend_message,
+        "backend_replicas": backend_replica_details,
         "model_id": _settings.model_id,
         "model_revision": _settings.model_revision,
         "port": PORT,
@@ -641,6 +1017,7 @@ def get_health_snapshot() -> dict[str, Any]:
         "default_query_instruction": _settings.default_query_instruction,
         "manage_backend_process": _settings.manage_backend_process,
         "preload_model": _settings.preload_model,
+        "auto_backend_replicas": _env_flag(_AUTO_BACKEND_REPLICAS_ENV, "1"),
         "started_at": _backend_started_at,
         "server_time": datetime.now().astimezone().isoformat(),
         "timezone": datetime.now().astimezone().tzname(),

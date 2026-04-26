@@ -136,7 +136,7 @@ http://localhost:12302/mcp
 ## 架构说明
 - **对外端口**：`PORT=12302`
 - **容器内 vLLM**：默认监听 `127.0.0.1:8001`
-- **工作方式**：外层 FastAPI 接收请求，必要时注入 Qwen query instruction，然后转发给容器内 `vLLM` 子进程
+- **工作方式**：外层 FastAPI 接收请求，必要时注入 Qwen query instruction，然后转发给容器内 `vLLM` 子进程；当容器可见多张 GPU 且未显式启用 tensor/pipeline parallel 时，wrapper 会默认按“每张卡 1 个 vLLM 实例”启动，并在外层轮询分发请求
 - **自动下载**：首次启动若本地缓存不存在模型，`vLLM` 会自动从 Hugging Face 拉取 `MODEL_ID`
 
 这意味着你通常只需要访问：
@@ -224,7 +224,20 @@ curl -X POST http://localhost:12302/admin/reload \
   - `"1"` -> 宿主机第 2 张卡
   - `"0,1"` -> 同时暴露两张卡
 - 如果只暴露一张卡，容器内 `vLLM` 会把它作为内部 `cuda:0` 使用，这是正常现象
-- 多卡并行可通过 `VLLM_EXTRA_ARGS` 追加参数，例如：
+- 如果暴露多张卡，且没有显式设置 `--tensor-parallel-size` / `--pipeline-parallel-size`，服务默认会在每张可见 GPU 上各启动 1 个单卡 `vLLM` 实例，并在外层 FastAPI 轮询分发请求，适合做并发推理
+- 如果你想关闭这个默认行为、仍然只保留 1 个后端实例，可设置：
+
+```yaml
+AUTO_BACKEND_REPLICAS: "0"
+```
+
+- 如果你想显式限制启动几个单卡副本，可设置：
+
+```yaml
+BACKEND_REPLICA_COUNT: "2"
+```
+
+- 只有在你明确要让“单个 vLLM 实例跨多张卡切模型”时，才需要通过 `VLLM_EXTRA_ARGS` 手动追加 tensor/pipeline parallel。例如：
 
 ```yaml
 VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
@@ -268,6 +281,8 @@ npm run build
 - `DEFAULT_QUERY_INSTRUCTION`：query 侧默认 instruction
 - `ADMIN_TOKEN`：热重载接口鉴权
 - `VLLM_EXTRA_ARGS`：透传额外 vLLM 参数
+- `AUTO_BACKEND_REPLICAS`：多卡默认按“每张卡 1 个 vLLM 实例”启动，设为 `0` 可关闭
+- `BACKEND_REPLICA_COUNT`：显式指定启动多少个单卡 vLLM 副本
 - `PROJECTOR_CACHE_TTL_SECONDS`：Projector 结果缓存 TTL（秒）
 - `PROJECTOR_CACHE_MAX_ITEMS`：Projector 缓存项上限
 

@@ -59,6 +59,12 @@ def test_build_backend_env_strips_vllm_port(monkeypatch):
     assert "VLLM_PORT" not in backend_env
 
 
+def test_build_backend_env_sets_cuda_visible_devices(monkeypatch):
+    backend_env = embedding_service._build_backend_env("GPU-test-0")
+
+    assert backend_env["CUDA_VISIBLE_DEVICES"] == "GPU-test-0"
+
+
 def test_validate_backend_settings_rejects_batched_tokens_smaller_than_max_model_len(monkeypatch):
     monkeypatch.setattr(embedding_service._settings, "max_model_len", 4096)
     monkeypatch.setattr(
@@ -102,3 +108,54 @@ def test_build_vllm_command_leaves_non_qwen_models_unchanged(monkeypatch):
     command = embedding_service._build_vllm_command()
 
     assert "--hf_overrides" not in command
+
+
+def test_build_backend_replicas_layout_uses_one_replica_per_visible_gpu(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "manage_backend_process", True)
+    monkeypatch.setattr(embedding_service._settings, "backend_port", 8001)
+    monkeypatch.setattr(embedding_service._settings, "backend_host", "127.0.0.1")
+    monkeypatch.setattr(embedding_service._settings, "extra_args", "--enforce-eager")
+    monkeypatch.setattr(embedding_service, "_detect_visible_gpu_identifiers", lambda: ["GPU-a", "GPU-b"])
+    monkeypatch.delenv("BACKEND_REPLICA_COUNT", raising=False)
+    monkeypatch.delenv("AUTO_BACKEND_REPLICAS", raising=False)
+
+    layout = embedding_service._build_backend_replicas_layout()
+
+    assert [replica.port for replica in layout] == [8001, 8002]
+    assert [replica.device_identifier for replica in layout] == ["GPU-a", "GPU-b"]
+
+
+def test_build_backend_replicas_layout_keeps_single_backend_for_tensor_parallel(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "manage_backend_process", True)
+    monkeypatch.setattr(embedding_service._settings, "extra_args", "--tensor-parallel-size 2")
+    monkeypatch.setattr(embedding_service, "_detect_visible_gpu_identifiers", lambda: ["GPU-a", "GPU-b"])
+    monkeypatch.delenv("BACKEND_REPLICA_COUNT", raising=False)
+
+    layout = embedding_service._build_backend_replicas_layout()
+
+    assert len(layout) == 1
+    assert layout[0].device_identifier is None
+
+
+def test_validate_backend_settings_rejects_replica_override_with_tensor_parallel(monkeypatch):
+    monkeypatch.setattr(embedding_service._settings, "manage_backend_process", True)
+    monkeypatch.setattr(embedding_service._settings, "extra_args", "--tensor-parallel-size 2")
+    monkeypatch.setenv("BACKEND_REPLICA_COUNT", "2")
+
+    with pytest.raises(embedding_service.BackendUnavailableError):
+        embedding_service._validate_backend_settings()
+
+
+def test_ordered_backend_candidates_round_robin_ready_replicas(monkeypatch):
+    replicas = [
+        embedding_service.BackendReplica(replica_index=0, port=8001, base_url="http://127.0.0.1:8001", ready=True),
+        embedding_service.BackendReplica(replica_index=1, port=8002, base_url="http://127.0.0.1:8002", ready=True),
+    ]
+    monkeypatch.setattr(embedding_service, "_backend_replicas", replicas)
+    monkeypatch.setattr(embedding_service, "_backend_router_index", 0)
+
+    first = embedding_service._ordered_backend_candidates_locked()
+    second = embedding_service._ordered_backend_candidates_locked()
+
+    assert [replica.replica_index for replica in first] == [0, 1]
+    assert [replica.replica_index for replica in second] == [1, 0]
