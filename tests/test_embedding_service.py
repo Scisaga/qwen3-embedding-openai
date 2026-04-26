@@ -3,6 +3,12 @@ import pytest
 import embedding_service
 
 
+class _CompletedProcess:
+    def __init__(self, returncode=0, stdout=""):
+        self.returncode = returncode
+        self.stdout = stdout
+
+
 def test_prepare_backend_payload_for_single_document():
     payload = embedding_service.prepare_backend_payload(
         {
@@ -63,6 +69,38 @@ def test_build_backend_env_sets_cuda_visible_devices(monkeypatch):
     backend_env = embedding_service._build_backend_env("GPU-test-0")
 
     assert backend_env["CUDA_VISIBLE_DEVICES"] == "GPU-test-0"
+
+
+def test_detect_visible_gpu_identifiers_returns_cuda_ordinals_for_nvidia_smi(monkeypatch):
+    def fake_run(*args, **kwargs):
+        return _CompletedProcess(
+            stdout=(
+                "GPU 0: NVIDIA GeForce RTX 2080 Ti (UUID: GPU-87a92d2a-6521-1e36-1ca9-21fd8085b365)\n"
+                "GPU 1: NVIDIA GeForce RTX 2080 Ti (UUID: GPU-95b5895b-c5f3-440b-4bd2-7160ec4da0d1)\n"
+            )
+        )
+
+    monkeypatch.setattr(embedding_service.subprocess, "run", fake_run)
+
+    identifiers = embedding_service._detect_visible_gpu_identifiers()
+
+    assert identifiers == ["0", "1"]
+
+
+def test_detect_visible_gpu_identifiers_converts_uuid_env_to_ordinals(monkeypatch):
+    def fake_run(*args, **kwargs):
+        return _CompletedProcess(returncode=1)
+
+    monkeypatch.setattr(embedding_service.subprocess, "run", fake_run)
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setenv(
+        "NVIDIA_VISIBLE_DEVICES",
+        "GPU-87a92d2a-6521-1e36-1ca9-21fd8085b365,GPU-95b5895b-c5f3-440b-4bd2-7160ec4da0d1",
+    )
+
+    identifiers = embedding_service._detect_visible_gpu_identifiers()
+
+    assert identifiers == ["0", "1"]
 
 
 def test_validate_backend_settings_rejects_batched_tokens_smaller_than_max_model_len(monkeypatch):

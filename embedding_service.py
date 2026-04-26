@@ -215,7 +215,7 @@ def _detect_visible_gpu_identifiers() -> list[str]:
     try:
         probe_env = _apply_proxy_env(dict(os.environ))
         result = subprocess.run(
-            ["nvidia-smi", "--query-gpu=uuid", "--format=csv,noheader"],
+            ["nvidia-smi", "-L"],
             check=False,
             capture_output=True,
             text=True,
@@ -223,9 +223,9 @@ def _detect_visible_gpu_identifiers() -> list[str]:
             env=probe_env,
         )
         if result.returncode == 0:
-            identifiers = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-            if identifiers:
-                return identifiers
+            gpu_count = sum(1 for line in result.stdout.splitlines() if line.strip().startswith("GPU "))
+            if gpu_count > 0:
+                return [str(index) for index in range(gpu_count)]
     except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
         pass
 
@@ -240,6 +240,8 @@ def _detect_visible_gpu_identifiers() -> list[str]:
             continue
         identifiers = [token.strip() for token in raw_value.split(",") if token.strip()]
         if identifiers:
+            if any(identifier.startswith("GPU-") for identifier in identifiers):
+                return [str(index) for index in range(len(identifiers))]
             return identifiers
     return []
 
