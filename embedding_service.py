@@ -567,6 +567,7 @@ async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
             healthy, payload, message, probe_path = await _probe_single_backend_health(client, replica.base_url)
             results.append((replica, healthy, payload, message, probe_path))
 
+    any_healthy = False
     healthy_payload: Optional[dict[str, Any]] = None
     healthy_probe_path = ""
     first_error = ""
@@ -576,9 +577,10 @@ async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
         replica.probe_path = probe_path
         if healthy:
             replica.last_error = ""
-            if healthy_payload is None:
+            if not any_healthy:
                 healthy_payload = payload
                 healthy_probe_path = probe_path
+            any_healthy = True
         elif message:
             replica.last_error = message
             if not first_error:
@@ -590,7 +592,7 @@ async def _probe_backend_health() -> tuple[bool, Optional[dict[str, Any]], str]:
         "",
     )
 
-    return healthy_payload is not None, healthy_payload, first_error or "All connection attempts failed"
+    return any_healthy, healthy_payload, "" if any_healthy else first_error or "All connection attempts failed"
 
 
 async def wait_for_backend_ready(timeout_s: Optional[float] = None) -> None:

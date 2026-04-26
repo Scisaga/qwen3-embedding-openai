@@ -197,3 +197,25 @@ def test_ordered_backend_candidates_round_robin_ready_replicas(monkeypatch):
 
     assert [replica.replica_index for replica in first] == [0, 1]
     assert [replica.replica_index for replica in second] == [1, 0]
+
+
+@pytest.mark.anyio
+async def test_probe_backend_health_treats_empty_200_response_as_ready(monkeypatch):
+    replicas = [
+        embedding_service.BackendReplica(replica_index=0, port=8001, base_url="http://127.0.0.1:8001"),
+        embedding_service.BackendReplica(replica_index=1, port=8002, base_url="http://127.0.0.1:8002"),
+    ]
+
+    async def fake_probe_single_backend_health(client, base_url):
+        return True, None, "", "/health"
+
+    monkeypatch.setattr(embedding_service._settings, "manage_backend_process", True)
+    monkeypatch.setattr(embedding_service, "_backend_replicas", replicas)
+    monkeypatch.setattr(embedding_service, "_probe_single_backend_health", fake_probe_single_backend_health)
+
+    healthy, payload, message = await embedding_service._probe_backend_health()
+
+    assert healthy is True
+    assert payload is None
+    assert message == ""
+    assert all(replica.ready for replica in replicas)
