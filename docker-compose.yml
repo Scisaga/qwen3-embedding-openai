@@ -16,7 +16,7 @@ services:
       HF_HOME: "/models"
       DTYPE: "float16"
       # Qwen3-Embedding-8B 在 RTX 2080 Ti (22GB, Turing) 上使用更保守的默认值
-      MAX_MODEL_LEN: "4096"
+      MAX_MODEL_LEN: "8192"
       MAX_DIMENSIONS: "4096"
       GPU_MEMORY_UTILIZATION: "0.72"
       PYTORCH_CUDA_ALLOC_CONF: "expandable_segments:True"
@@ -32,7 +32,7 @@ services:
       # - --disable-frontend-multiprocessing: 降低前后端分离复杂度
       # - --max-num-seqs / --max-num-batched-tokens: 缩小调度窗口，但 batched tokens 不能小于 max_model_len
       # - --hf_overrides '{"is_matryoshka": true}': 让 Qwen3-Embedding-* 在 vLLM 中正确接受 dimensions 参数
-      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 8 --max-num-batched-tokens 4096 --disable-custom-all-reduce --hf_overrides '{\"is_matryoshka\": true}'"
+      VLLM_EXTRA_ARGS: "--enforce-eager --disable-frontend-multiprocessing --max-num-seqs 24 --max-num-batched-tokens 16384 --disable-custom-all-reduce --hf_overrides '{\"is_matryoshka\": true}'"
     volumes:
       - ./models:/models
     ipc: host
