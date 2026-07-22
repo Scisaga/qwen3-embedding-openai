@@ -1,142 +1,189 @@
 import Plotly from "plotly.js-dist-min";
 import "./styles.css";
 
-const app = document.getElementById("app");
+let mountedProjector = null;
+
+export function resizeProjector() {
+  if (!mountedProjector?.plot?.isConnected) return;
+  requestAnimationFrame(() => {
+    try {
+      Plotly.Plots.resize(mountedProjector.plot);
+    } catch (_) {
+      // Plotly has not rendered a scene yet.
+    }
+  });
+}
+
+export function mountProjector(root) {
+  if (!root) throw new Error("Projector root element is required.");
+  if (root.dataset.projectorMounted === "true") {
+    resizeProjector();
+    return;
+  }
+  const app = root;
 
 app.innerHTML = `
-  <div class="page">
-    <aside class="panel left">
-      <h2>Projector Controls</h2>
-      <div class="hint">输入文本后调用 <code>/v1/embeddings/projector</code>，后端预计算投影，前端用 3D 点云渲染。</div>
-
-      <label for="inputs">Texts (one line per item)</label>
-      <textarea id="inputs">What is the capital of China?
+  <div class="projector-view">
+    <div class="projector-grid">
+      <section class="projector-card projector-controls">
+        <div class="projector-card-header">
+          <div>
+            <div class="projector-card-title">Projector Controls</div>
+            <div class="projector-card-subtitle">POST <code>/v1/embeddings/projector</code></div>
+          </div>
+        </div>
+        <div class="projector-card-body projector-form">
+          <label class="projector-field" for="projectorInputs">
+            <span class="projector-label">Texts（每行一条）</span>
+            <textarea id="projectorInputs">What is the capital of China?
 The capital of China is Beijing.
 The Eiffel Tower is located in Paris.
 Shanghai is a major financial center in China.</textarea>
+          </label>
 
-      <div class="row">
-        <div>
-          <label for="projectionMethod">Projection</label>
-          <select id="projectionMethod">
-            <option value="umap">UMAP</option>
-            <option value="tsne">t-SNE</option>
-            <option value="pca">PCA</option>
-          </select>
+          <div class="projector-row">
+            <label class="projector-field" for="projectorProjectionMethod">
+              <span class="projector-label">Projection</span>
+              <select id="projectorProjectionMethod">
+                <option value="umap">UMAP</option>
+                <option value="tsne">t-SNE</option>
+                <option value="pca">PCA</option>
+              </select>
+            </label>
+            <label class="projector-field" for="projectorMetric">
+              <span class="projector-label">Metric</span>
+              <select id="projectorMetric">
+                <option value="cosine">cosine</option>
+                <option value="euclidean">euclidean</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="projector-row">
+            <label class="projector-field" for="projectorNeighborsK">
+              <span class="projector-label">Neighbors K</span>
+              <input id="projectorNeighborsK" type="number" min="1" max="256" value="10" />
+            </label>
+            <label class="projector-field" for="projectorPointSize">
+              <span class="projector-label">Point Size</span>
+              <input id="projectorPointSize" type="number" min="1" max="64" step="0.5" value="5" />
+            </label>
+          </div>
+
+          <div class="projector-row">
+            <label class="projector-field" for="projectorInputType">
+              <span class="projector-label">Input Type</span>
+              <select id="projectorInputType">
+                <option value="">document / raw</option>
+                <option value="query">query</option>
+                <option value="document">document</option>
+              </select>
+            </label>
+            <label class="projector-field" for="projectorModel">
+              <span class="projector-label">Model（可选）</span>
+              <input id="projectorModel" placeholder="Qwen/Qwen3-Embedding-8B" />
+            </label>
+          </div>
+
+          <label class="projector-field" for="projectorInstruction">
+            <span class="projector-label">Instruction（可选）</span>
+            <input id="projectorInstruction" placeholder="Given a web search query, retrieve relevant passages that answer the query" />
+          </label>
+
+          <label class="projector-field" for="projectorLabels">
+            <span class="projector-label">Labels（可选，每行一条）</span>
+            <textarea id="projectorLabels" class="projector-labels" placeholder="news&#10;news&#10;travel&#10;finance"></textarea>
+          </label>
+
+          <div class="projector-actions">
+            <button class="projector-btn primary" id="projectorRunBtn"><svg class="projector-icon" aria-hidden="true"><use href="#i-run"></use></svg>Run Projector</button>
+            <button class="projector-btn secondary" id="projectorDemoBtn"><svg class="projector-icon" aria-hidden="true"><use href="#i-demo"></use></svg>Use Demo</button>
+          </div>
+
+          <div class="projector-hint">左键拖拽旋转，滚轮缩放，右键拖拽平移；点选或悬停可联动查看最近邻。</div>
         </div>
-        <div>
-          <label for="metric">Metric</label>
-          <select id="metric">
-            <option value="cosine">cosine</option>
-            <option value="euclidean">euclidean</option>
-          </select>
+      </section>
+
+      <section class="projector-card projector-visualization">
+        <div class="projector-card-header projector-visual-header">
+          <div>
+            <div class="projector-card-title">3D Projection</div>
+            <div class="projector-card-subtitle">scatter + nearest-neighbor explorer</div>
+          </div>
+          <div class="projector-badges">
+            <span class="projector-badge" id="projectorBadgeModel">model: -</span>
+            <span class="projector-badge warn" id="projectorBadgeState">status: idle</span>
+            <span class="projector-badge" id="projectorBadgeCount">points: 0</span>
+            <span class="projector-badge" id="projectorBadgeLatency">latency: -</span>
+          </div>
         </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label for="neighborsK">Neighbors K</label>
-          <input id="neighborsK" type="number" min="1" max="256" value="10" />
+        <div class="projector-canvas-wrap">
+          <div id="projectorPlot"></div>
         </div>
-        <div>
-          <label for="pointSize">Point Size</label>
-          <input id="pointSize" type="number" min="1" max="64" step="0.5" value="5" />
+      </section>
+    </div>
+
+    <div class="projector-analysis-grid">
+      <section class="projector-card">
+        <div class="projector-card-header">
+          <div class="projector-card-title">Selection & Nearest Neighbors</div>
+          <span class="projector-card-subtitle">interactive</span>
         </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label for="inputType">Input Type</label>
-          <select id="inputType">
-            <option value="">document / raw</option>
-            <option value="query">query</option>
-            <option value="document">document</option>
-          </select>
+        <div class="projector-card-body projector-selection-body">
+          <div id="projectorStatus" class="projector-status warn">Ready to run projector request.</div>
+          <div class="projector-info-box">
+            <div class="projector-key">Selected Point</div>
+            <div class="projector-value" id="projectorSelectedPoint">None</div>
+          </div>
+          <div class="projector-info-box projector-neighbors-box">
+            <div class="projector-key">Nearest Neighbors</div>
+            <div id="projectorNeighbors" class="projector-empty">None</div>
+          </div>
         </div>
-        <div>
-          <label for="model">Model (optional)</label>
-          <input id="model" placeholder="Qwen/Qwen3-Embedding-8B" />
+      </section>
+
+      <section class="projector-card">
+        <div class="projector-card-header">
+          <div class="projector-card-title">Projection Data</div>
+          <span class="projector-card-subtitle">JSON</span>
         </div>
-      </div>
-
-      <label for="instruction">Instruction (optional)</label>
-      <input id="instruction" placeholder="Given a web search query, retrieve relevant passages that answer the query" />
-
-      <label for="labels">Labels (optional, one line per item)</label>
-      <textarea id="labels" placeholder="news&#10;news&#10;travel&#10;finance"></textarea>
-
-      <div class="actions">
-        <button class="primary" id="runBtn">Run Projector</button>
-        <button class="secondary" id="demoBtn">Use Demo</button>
-        <button class="secondary" id="homeBtn">Back To Console</button>
-      </div>
-
-      <div class="hint">交互：左键拖拽旋转，滚轮缩放，右键拖拽平移。显示原点与“原点→点”箭头连线，并标注每个点编号。</div>
-    </aside>
-
-    <main class="panel center">
-      <div class="topline">
-        <div>
-          <div class="title">Embedding Projector</div>
-          <div class="subtitle">3D scatter + nearest-neighbor explorer</div>
+        <div class="projector-card-body projector-data-grid">
+          <div>
+            <div class="projector-key">Projection Meta</div>
+            <pre id="projectorMetaOut">{}</pre>
+          </div>
+          <div>
+            <div class="projector-key">Raw Response</div>
+            <pre id="projectorRawOut">{}</pre>
+          </div>
         </div>
-        <div class="badges">
-          <span class="badge" id="badgeModel">model: -</span>
-          <span class="badge warn" id="badgeState">status: idle</span>
-          <span class="badge" id="badgeCount">points: 0</span>
-          <span class="badge" id="badgeLatency">latency: -</span>
-        </div>
-      </div>
-      <div class="canvas-wrap">
-        <div id="plot"></div>
-      </div>
-    </main>
-
-    <aside class="panel right">
-      <div id="status" class="status warn">Ready to run projector request.</div>
-      <div class="card">
-        <div class="k">Selected Point</div>
-        <div class="v" id="selectedPoint">None</div>
-      </div>
-      <div class="card">
-        <div class="k">Nearest Neighbors</div>
-        <div id="neighbors" class="empty">None</div>
-      </div>
-      <div class="card">
-        <div class="k">Projection Meta</div>
-        <pre id="metaOut">{}</pre>
-      </div>
-      <div class="card">
-        <div class="k">Raw Response</div>
-        <pre id="rawOut">{}</pre>
-      </div>
-    </aside>
+      </section>
+    </div>
   </div>
 `;
 
 const els = {
-  inputs: document.getElementById("inputs"),
-  projectionMethod: document.getElementById("projectionMethod"),
-  metric: document.getElementById("metric"),
-  neighborsK: document.getElementById("neighborsK"),
-  pointSize: document.getElementById("pointSize"),
-  inputType: document.getElementById("inputType"),
-  model: document.getElementById("model"),
-  instruction: document.getElementById("instruction"),
-  labels: document.getElementById("labels"),
-  runBtn: document.getElementById("runBtn"),
-  demoBtn: document.getElementById("demoBtn"),
-  homeBtn: document.getElementById("homeBtn"),
-  plot: document.getElementById("plot"),
-  status: document.getElementById("status"),
-  selectedPoint: document.getElementById("selectedPoint"),
-  neighbors: document.getElementById("neighbors"),
-  metaOut: document.getElementById("metaOut"),
-  rawOut: document.getElementById("rawOut"),
-  badgeModel: document.getElementById("badgeModel"),
-  badgeState: document.getElementById("badgeState"),
-  badgeCount: document.getElementById("badgeCount"),
-  badgeLatency: document.getElementById("badgeLatency"),
+  inputs: app.querySelector("#projectorInputs"),
+  projectionMethod: app.querySelector("#projectorProjectionMethod"),
+  metric: app.querySelector("#projectorMetric"),
+  neighborsK: app.querySelector("#projectorNeighborsK"),
+  pointSize: app.querySelector("#projectorPointSize"),
+  inputType: app.querySelector("#projectorInputType"),
+  model: app.querySelector("#projectorModel"),
+  instruction: app.querySelector("#projectorInstruction"),
+  labels: app.querySelector("#projectorLabels"),
+  runBtn: app.querySelector("#projectorRunBtn"),
+  demoBtn: app.querySelector("#projectorDemoBtn"),
+  plot: app.querySelector("#projectorPlot"),
+  status: app.querySelector("#projectorStatus"),
+  selectedPoint: app.querySelector("#projectorSelectedPoint"),
+  neighbors: app.querySelector("#projectorNeighbors"),
+  metaOut: app.querySelector("#projectorMetaOut"),
+  rawOut: app.querySelector("#projectorRawOut"),
+  badgeModel: app.querySelector("#projectorBadgeModel"),
+  badgeState: app.querySelector("#projectorBadgeState"),
+  badgeCount: app.querySelector("#projectorBadgeCount"),
+  badgeLatency: app.querySelector("#projectorBadgeLatency"),
 };
 
 const state = {
@@ -248,7 +295,7 @@ function normalizePlotPoints(points, labels) {
 function renderSelected(index) {
   if (!Number.isInteger(index) || index < 0 || index >= state.points.length) {
     els.selectedPoint.textContent = "None";
-    els.neighbors.innerHTML = "<div class='empty'>None</div>";
+    els.neighbors.innerHTML = "<div class='projector-empty'>None</div>";
     return;
   }
 
@@ -256,7 +303,7 @@ function renderSelected(index) {
   els.selectedPoint.textContent = `[${point.index}] ${point.text}`;
   const nn = state.neighbors[String(index)] || [];
   if (!nn.length) {
-    els.neighbors.innerHTML = "<div class='empty'>No neighbors</div>";
+    els.neighbors.innerHTML = "<div class='projector-empty'>No neighbors</div>";
     return;
   }
 
@@ -648,8 +695,21 @@ function fillDemo() {
 
 els.runBtn.addEventListener("click", runProjector);
 els.demoBtn.addEventListener("click", fillDemo);
-els.homeBtn.addEventListener("click", () => {
-  window.location.href = "/";
-});
 
 fillDemo();
+
+  root.dataset.projectorMounted = "true";
+  mountedProjector = { root, plot: els.plot };
+}
+
+const standaloneRoot = document.getElementById("app");
+if (standaloneRoot) {
+  mountProjector(standaloneRoot);
+}
+
+const embeddedRoot = document.getElementById("projector-root");
+if (embeddedRoot) {
+  mountProjector(embeddedRoot);
+}
+
+window.qwenEmbeddingProjector = { mountProjector, resizeProjector };

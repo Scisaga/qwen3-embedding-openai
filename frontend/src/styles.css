@@ -1,321 +1,419 @@
-:root {
-  --bg0: #050913;
-  --bg1: #09142b;
-  --panel: rgba(9, 20, 43, 0.84);
-  --line: rgba(148, 163, 184, 0.2);
-  --text: #e2e8f0;
-  --muted: #94a3b8;
-  --accent: #ff9b2f;
-  --accent2: #ffd166;
-  --ok: #22c55e;
-  --bad: #ef4444;
-  --warn: #f59e0b;
-  --scroll-track: rgba(15, 23, 42, 0.86);
-  --scroll-thumb: rgba(71, 85, 105, 0.78);
-  --scroll-thumb-hover: rgba(100, 116, 139, 0.88);
+.projector-view {
+  --projector-border: var(--border, rgba(148, 163, 184, 0.18));
+  --projector-text: var(--text, rgba(226, 232, 240, 0.94));
+  --projector-muted: var(--muted, rgba(148, 163, 184, 0.86));
+  --projector-muted2: var(--muted2, rgba(148, 163, 184, 0.62));
+  --projector-panel: var(--panel, rgba(10, 18, 36, 0.82));
+  --projector-accent: var(--accent, #ff8a1f);
+  --projector-ring: var(--ring, 0 0 0 4px rgba(255, 138, 31, 0.16));
+  width: 100%;
+  min-width: 0;
+  color: var(--projector-text);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
-* {
+.projector-view *,
+.projector-view *::before,
+.projector-view *::after {
   box-sizing: border-box;
 }
 
-html,
-body,
-#app {
-  margin: 0;
-  min-height: 100vh;
-}
-
-body {
-  color: var(--text);
-  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
-  background:
-    radial-gradient(1000px 650px at 0% -10%, rgba(255, 155, 47, 0.2), transparent 60%),
-    radial-gradient(900px 600px at 100% 0%, rgba(56, 189, 248, 0.16), transparent 55%),
-    linear-gradient(180deg, var(--bg0), var(--bg1));
-}
-
-.page {
+.projector-grid {
   display: grid;
-  grid-template-columns: 360px 1fr 340px;
-  gap: 12px;
-  padding: 12px;
-  min-height: 100vh;
-}
-
-.panel {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--panel);
-}
-
-.left,
-.right {
-  padding: 12px;
-  overflow: auto;
-  max-height: calc(100vh - 24px);
-}
-
-.center {
-  padding: 10px;
-  display: grid;
-  grid-template-rows: 42px 1fr;
+  grid-template-columns: minmax(310px, 0.72fr) minmax(0, 1.65fr);
   gap: 10px;
 }
 
-.topline {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 12px;
-  background: rgba(2, 6, 23, 0.5);
+.projector-analysis-grid {
+  display: grid;
+  grid-template-columns: 0.82fr 1.18fr;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.subtitle {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.badges {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.badge {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  font-size: 12px;
-  padding: 4px 10px;
-  color: var(--muted);
-  background: rgba(15, 23, 42, 0.6);
-}
-
-.badge.ok {
-  color: #bbf7d0;
-  border-color: rgba(34, 197, 94, 0.35);
-}
-
-.badge.warn {
-  color: #fde68a;
-  border-color: rgba(245, 158, 11, 0.35);
-}
-
-.canvas-wrap {
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: rgba(2, 6, 23, 0.72);
+.projector-card {
+  min-width: 0;
   overflow: hidden;
-  position: relative;
-}
-
-#plot {
-  width: 100%;
-  height: 100%;
-  min-height: 560px;
-  display: block;
-}
-
-#plot .js-plotly-plot,
-#plot .plot-container,
-#plot .svg-container,
-#plot .main-svg {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-}
-
-h2 {
-  font-size: 16px;
-  margin-bottom: 10px;
-}
-
-label {
-  display: block;
-  margin: 10px 0 6px;
-  font-size: 12px;
-  color: #cbd5e1;
-}
-
-textarea,
-input,
-select {
-  width: 100%;
+  border: 1px solid var(--projector-border);
   border-radius: 8px;
-  border: 1px solid var(--line);
-  background: rgba(15, 23, 42, 0.75);
-  color: var(--text);
-  padding: 8px 10px;
-  font: inherit;
+  background: var(--projector-panel);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.3);
 }
 
-textarea {
-  min-height: 120px;
-  resize: vertical;
+.projector-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 45px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.54), rgba(15, 23, 42, 0.26));
 }
 
-.left textarea {
+.projector-card-title {
+  color: rgba(241, 245, 249, 0.96);
   font-size: 13px;
-  line-height: 1.55;
-  font-weight: 400;
-  color: rgba(203, 213, 225, 0.74);
-  scrollbar-width: thin;
-  scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  font-weight: 760;
+  letter-spacing: 0.24px;
 }
 
-.left textarea::placeholder {
-  color: rgba(148, 163, 184, 0.56);
+.projector-card-subtitle {
+  margin-top: 3px;
+  color: var(--projector-muted2);
+  font-size: 12px;
 }
 
-.left textarea::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+.projector-card-subtitle code {
+  padding: 2px 6px;
+  border: 1px solid var(--projector-border);
+  border-radius: 4px;
+  background: rgba(2, 6, 23, 0.5);
+  color: var(--projector-text);
 }
 
-.left textarea::-webkit-scrollbar-track {
-  background: var(--scroll-track);
-  border-left: 1px solid rgba(148, 163, 184, 0.2);
+.projector-card-body {
+  padding: 12px 14px;
 }
 
-.left textarea::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, var(--scroll-thumb), rgba(51, 65, 85, 0.9));
-  border: 2px solid var(--scroll-track);
-  border-radius: 999px;
+.projector-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-.left textarea::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, var(--scroll-thumb-hover), rgba(71, 85, 105, 0.95));
-}
-
-.row {
+.projector-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
-.actions {
+.projector-field {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+.projector-label,
+.projector-key {
+  color: var(--projector-muted2);
+  font-size: 12px;
+}
+
+.projector-view textarea,
+.projector-view input,
+.projector-view select {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid var(--projector-border);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(2, 6, 23, 0.38);
+  color: var(--projector-text);
+  font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.projector-view textarea:focus,
+.projector-view input:focus,
+.projector-view select:focus {
+  border-color: rgba(255, 138, 31, 0.44);
+  box-shadow: var(--projector-ring);
+  background: rgba(2, 6, 23, 0.46);
+}
+
+.projector-view textarea::placeholder,
+.projector-view input::placeholder {
+  color: rgba(148, 163, 184, 0.55);
+}
+
+.projector-view textarea {
+  min-height: 156px;
+  resize: vertical;
+  color: rgba(203, 213, 225, 0.82);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.projector-view textarea.projector-labels {
+  min-height: 112px;
+}
+
+.projector-actions {
+  display: flex;
   flex-wrap: wrap;
-  margin-top: 12px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
 }
 
-button {
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font: 600 12px/1 inherit;
+.projector-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--projector-border);
+  border-radius: 6px;
+  background: rgba(15, 23, 42, 0.48);
+  color: var(--projector-text);
+  font: 600 13px/1 inherit;
   cursor: pointer;
-  padding: 9px 12px;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
 }
 
-.primary {
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
-  color: #111827;
+.projector-btn:hover {
+  background: rgba(148, 163, 184, 0.1);
 }
 
-.secondary {
-  background: rgba(15, 23, 42, 0.75);
-  border-color: var(--line);
-  color: var(--text);
+.projector-btn:active {
+  transform: translateY(1px);
 }
 
-.hint {
+.projector-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.projector-btn.primary {
+  border-color: rgba(255, 138, 31, 0.28);
+  background: linear-gradient(180deg, rgba(255, 138, 31, 0.28), rgba(255, 138, 31, 0.17));
+  color: rgba(255, 244, 226, 0.96);
+}
+
+.projector-btn.primary:hover {
+  background: linear-gradient(180deg, rgba(255, 138, 31, 0.34), rgba(255, 138, 31, 0.2));
+}
+
+.projector-btn:focus-visible {
+  outline: none;
+  border-color: rgba(255, 138, 31, 0.48);
+  box-shadow: var(--projector-ring);
+}
+
+.projector-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
+}
+
+.projector-hint {
+  color: var(--projector-muted);
   font-size: 12px;
-  color: var(--muted);
-  margin-top: 8px;
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
-.status {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
+.projector-visualization {
+  display: grid;
+  grid-template-rows: auto minmax(560px, 1fr);
+}
+
+.projector-visual-header {
+  align-items: flex-start;
+}
+
+.projector-badges {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.projector-badge {
+  padding: 5px 9px;
+  border: 1px solid var(--projector-border);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.5);
+  color: var(--projector-muted);
   font-size: 12px;
-  margin-bottom: 10px;
-  background: rgba(2, 6, 23, 0.62);
+  white-space: nowrap;
 }
 
-.status.ok {
-  border-color: rgba(34, 197, 94, 0.4);
+.projector-badge.ok {
+  border-color: rgba(34, 197, 94, 0.3);
+  background: rgba(34, 197, 94, 0.1);
   color: #bbf7d0;
 }
 
-.status.bad {
-  border-color: rgba(239, 68, 68, 0.4);
-  color: #fecaca;
-}
-
-.status.warn {
-  border-color: rgba(245, 158, 11, 0.4);
+.projector-badge.warn {
+  border-color: rgba(245, 158, 11, 0.32);
+  background: rgba(245, 158, 11, 0.1);
   color: #fde68a;
 }
 
-.card {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 10px;
+.projector-badge.bad {
+  border-color: rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecaca;
+}
+
+.projector-canvas-wrap {
+  min-width: 0;
+  min-height: 560px;
+  overflow: hidden;
   background: rgba(2, 6, 23, 0.58);
-  margin-bottom: 10px;
 }
 
-.card .k {
-  font-size: 11px;
-  color: var(--muted);
-  margin-bottom: 4px;
+#projectorPlot {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
 }
 
-.card .v {
+#projectorPlot .js-plotly-plot,
+#projectorPlot .plot-container,
+#projectorPlot .svg-container,
+#projectorPlot .main-svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.projector-selection-body {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.65fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.projector-status {
+  grid-column: 1 / -1;
+  padding: 10px 11px;
+  border: 1px solid var(--projector-border);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.3);
+  color: var(--projector-muted);
+  font-size: 12px;
+}
+
+.projector-status.ok {
+  border-color: rgba(34, 197, 94, 0.34);
+  color: #bbf7d0;
+}
+
+.projector-status.warn {
+  border-color: rgba(245, 158, 11, 0.34);
+  color: #fde68a;
+}
+
+.projector-status.bad {
+  border-color: rgba(239, 68, 68, 0.34);
+  color: #fecaca;
+}
+
+.projector-info-box {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.22);
+}
+
+.projector-value {
+  margin-top: 7px;
+  color: var(--projector-text);
   font-size: 13px;
-  line-height: 1.4;
-  word-break: break-word;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-pre {
-  margin: 0;
-  white-space: pre-wrap;
-  word-break: break-word;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(2, 6, 23, 0.78);
-  padding: 10px;
-  max-height: 240px;
+.projector-neighbors-box {
+  max-height: 235px;
   overflow: auto;
+}
+
+.projector-neighbors-box ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.projector-neighbors-box li {
+  margin-bottom: 7px;
+  color: var(--projector-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.projector-data-grid {
+  display: grid;
+  grid-template-columns: 0.78fr 1.22fr;
+  gap: 10px;
+}
+
+.projector-data-grid > div {
+  min-width: 0;
+}
+
+.projector-view pre {
+  min-height: 180px;
+  max-height: 260px;
+  margin: 7px 0 0;
+  padding: 10px 11px;
+  overflow: auto;
+  border: 1px solid var(--projector-border);
+  border-radius: 6px;
+  background: rgba(2, 6, 23, 0.46);
+  color: var(--projector-text);
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.projector-empty {
+  margin-top: 7px;
+  color: var(--projector-muted);
   font-size: 12px;
 }
 
-ul {
-  margin: 0;
-  padding-left: 16px;
-}
-
-li {
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-
-.empty {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-@media (max-width: 1280px) {
-  .page {
+@media (max-width: 1240px) {
+  .projector-grid,
+  .projector-analysis-grid {
     grid-template-columns: 1fr;
   }
-  .left,
-  .right {
-    max-height: none;
+
+  .projector-visualization {
+    grid-template-rows: auto minmax(520px, 1fr);
+  }
+
+  .projector-canvas-wrap,
+  #projectorPlot {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 680px) {
+  .projector-row,
+  .projector-selection-body,
+  .projector-data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .projector-card-header,
+  .projector-visual-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .projector-badges {
+    justify-content: flex-start;
+  }
+
+  .projector-visualization {
+    grid-template-rows: auto minmax(420px, 1fr);
+  }
+
+  .projector-canvas-wrap,
+  #projectorPlot {
+    min-height: 420px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .projector-view * {
+    transition: none !important;
   }
 }

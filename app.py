@@ -5,7 +5,7 @@ import asyncio
 from typing import Literal, Optional
 
 from fastapi import FastAPI, Header
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -91,6 +91,7 @@ def _build_index_html() -> str:
   <meta name="theme-color" content="#0a1224"/>
   <link rel="icon" type="image/png" href="/static/logo.png"/>
   <link rel="apple-touch-icon" href="/static/logo.png"/>
+  <link rel="stylesheet" href="/projector-static/projector.css"/>
   <title>Qwen3 Embedding</title>
   <style>
     :root{
@@ -325,8 +326,432 @@ def _build_index_html() -> str:
       .kv-grid{grid-template-columns:1fr}
     }
   </style>
+  <style id="unified-ui-overrides">
+    :root{
+      --border2:rgba(148,163,184,.24);
+      --ring:0 0 0 4px rgba(255,138,31,.16);
+      --radius:8px;
+      --radius2:8px;
+    }
+    *{
+      scrollbar-width:thin;
+      scrollbar-color:rgba(148,163,184,.34) transparent;
+    }
+    *::-webkit-scrollbar{width:10px;height:10px}
+    *::-webkit-scrollbar-track{background:transparent}
+    *::-webkit-scrollbar-thumb{
+      border:2px solid transparent;
+      border-radius:999px;
+      background:rgba(148,163,184,.34);
+      background-clip:padding-box;
+    }
+    *::-webkit-scrollbar-thumb:hover{background:rgba(148,163,184,.48);background-clip:padding-box}
+    html{min-height:100%;background:var(--bg0)}
+    body{
+      min-height:100%;
+      position:relative;
+      background:linear-gradient(180deg,#0a1224 0%,#08101f 48%,#050913 100%);
+    }
+    body::before{
+      content:"";
+      position:fixed;
+      inset:0;
+      z-index:0;
+      pointer-events:none;
+      background:
+        radial-gradient(960px 560px at 18% -12%,rgba(255,138,31,.14),transparent 64%),
+        radial-gradient(820px 520px at 92% 8%,rgba(255,209,102,.08),transparent 62%);
+    }
+    .app{position:relative;z-index:1;display:flex;min-height:100vh;padding:0;gap:0;align-items:stretch}
+    .sidebar{
+      width:270px;
+      min-width:270px;
+      height:100vh;
+      max-height:100vh;
+      position:sticky;
+      top:0;
+      padding:18px 16px;
+      overflow:auto;
+      border:0;
+      border-right:1px solid var(--border);
+      border-radius:0;
+      background:rgba(2,6,23,.58);
+      backdrop-filter:blur(10px);
+    }
+    .brand{gap:12px;padding:10px 10px 14px}
+    .logo{
+      width:34px;
+      height:34px;
+      border-radius:0;
+      object-fit:contain;
+      box-shadow:none;
+    }
+    .brand-title{font-size:16px;font-weight:700}
+    .brand-sub{font-size:12px;color:var(--muted2);margin-top:2px}
+    .nav{margin-top:6px;display:flex;flex-direction:column;gap:6px}
+    .nav .nav-link{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      width:100%;
+      padding:10px 12px;
+      border:1px solid transparent;
+      border-radius:6px;
+      background:transparent;
+      color:var(--muted);
+      font:inherit;
+      text-align:left;
+      cursor:pointer;
+      transition:background .15s ease,border-color .15s ease,color .15s ease;
+    }
+    .nav .nav-link:hover{background:rgba(148,163,184,.08)}
+    .nav .nav-link.active{
+      border-color:rgba(255,138,31,.24);
+      background:rgba(255,138,31,.11);
+      color:var(--text);
+    }
+    .icon-defs{position:absolute;width:0;height:0;overflow:hidden}
+    .icon{
+      width:16px;
+      height:16px;
+      flex:0 0 16px;
+      color:currentColor;
+      fill:none;
+      stroke:currentColor;
+      stroke-width:1.8;
+      stroke-linecap:square;
+      stroke-linejoin:miter;
+      opacity:.84;
+    }
+    .nav .icon{color:var(--muted2);opacity:.78}
+    .nav .nav-link.active .icon{color:var(--accent);opacity:.98}
+    .sidebar-footer{
+      margin-top:18px;
+      padding:12px;
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      background:rgba(15,23,42,.45);
+    }
+    .sidebar-footer .kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0}
+    .sidebar-footer .k{color:var(--muted2);font-size:12px}
+    .sidebar-footer .v{
+      max-width:142px;
+      overflow:hidden;
+      color:var(--text);
+      font-size:12px;
+      text-align:right;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .main{min-width:0;flex:1;display:flex;flex-direction:column}
+    .topbar{
+      position:sticky;
+      top:0;
+      z-index:12;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      padding:12px 18px;
+      border-bottom:1px solid var(--border);
+      background:rgba(2,6,23,.58);
+      backdrop-filter:blur(10px);
+    }
+    .crumbs{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+    .crumbs strong{color:var(--text)}
+    .sep{opacity:.55}
+    .top-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+    .chips{display:flex;gap:10px;flex-wrap:wrap}
+    .chip{padding:8px 12px;font-weight:650;white-space:nowrap}
+    .content{padding:18px 16px 34px}
+    .tabbar{display:none}
+    .mobile-nav{display:none}
+    .section{max-width:1320px;margin:0 auto 16px;display:none}
+    .section.active{display:block}
+    .section.projector-section{max-width:1600px}
+    .section-head{margin:2px 0 12px}
+    .section-head h1,.section-head h2{margin:0;font-size:22px;letter-spacing:.2px}
+    .section-head p{margin:8px 0 0;color:var(--muted);font-size:13px;line-height:1.7}
+    .grid{grid-template-columns:1.12fr .88fr;gap:10px}
+    .grid-2{gap:10px}
+    .card{
+      border:1px solid var(--border);
+      border-radius:var(--radius2);
+      background:var(--panel);
+      box-shadow:0 12px 34px rgba(0,0,0,.30);
+      overflow:hidden;
+    }
+    .card-body{padding:12px 14px}
+    .card-title{
+      min-height:45px;
+      margin:-12px -14px 12px;
+      padding:10px 14px;
+      align-items:center;
+      border-bottom:1px solid rgba(148,163,184,.20);
+      background:linear-gradient(180deg,rgba(30,41,59,.54),rgba(15,23,42,.26));
+    }
+    .card-title h3{font-size:13px;font-weight:760;letter-spacing:.24px;color:rgba(241,245,249,.96)}
+    .card-title p{margin:4px 0 0;font-size:12px;line-height:1.5}
+    .pill{padding:5px 9px;border-radius:999px}
+    label{margin:0 0 7px;font-size:12px;color:var(--muted2)}
+    textarea,input,select{
+      padding:10px 11px;
+      border-radius:6px;
+      border-color:var(--border);
+      background:rgba(2,6,23,.38);
+      outline:none;
+      transition:border-color .15s ease,box-shadow .15s ease,background .15s ease;
+    }
+    textarea::placeholder,input::placeholder{color:rgba(148,163,184,.55)}
+    textarea:focus,input:focus,select:focus{
+      border-color:rgba(255,138,31,.44);
+      box-shadow:var(--ring);
+      background:rgba(2,6,23,.46);
+    }
+    textarea{min-height:230px}
+    .row,.row-3{gap:10px}
+    .actions{gap:10px;margin-top:14px}
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:10px 12px;
+      border:1px solid var(--border);
+      border-radius:6px;
+      font:600 13px/1 inherit;
+      transition:background .15s ease,border-color .15s ease,transform .05s ease,opacity .15s ease;
+    }
+    .btn:hover{opacity:1;background:rgba(148,163,184,.10)}
+    .btn.primary{
+      border-color:rgba(255,138,31,.28);
+      background:linear-gradient(180deg,rgba(255,138,31,.28),rgba(255,138,31,.17));
+      color:rgba(255,244,226,.96);
+    }
+    .btn.primary:hover{background:linear-gradient(180deg,rgba(255,138,31,.34),rgba(255,138,31,.20))}
+    .btn.secondary{background:rgba(15,23,42,.48)}
+    .btn.ghost{background:transparent}
+    .btn:focus-visible,.nav-link:focus-visible,.mobile-tab:focus-visible{
+      outline:none;
+      border-color:rgba(255,138,31,.48);
+      box-shadow:var(--ring);
+    }
+    .status{padding:11px;border-radius:6px;background:rgba(2,6,23,.30)}
+    .metrics{gap:10px}
+    .metric,.kv-item,.template-note,.api-list li{border-radius:6px;background:rgba(2,6,23,.24)}
+    .metric .n{font-size:22px}
+    pre,.matrix-wrap{border-radius:6px;background:rgba(2,6,23,.46)}
+    .embedding-viz{
+      margin-top:12px;
+      padding:12px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:rgba(2,6,23,.24);
+    }
+    .embedding-viz-head{
+      display:flex;
+      align-items:flex-start;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:10px;
+    }
+    .embedding-viz-title{font-size:13px;font-weight:700;color:var(--text)}
+    .embedding-viz-subtitle{margin-top:3px;font-size:12px;color:var(--muted2)}
+    .similarity-empty{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:176px;
+      padding:16px;
+      border:1px dashed rgba(148,163,184,.22);
+      border-radius:6px;
+      color:var(--muted2);
+      font-size:12px;
+      text-align:center;
+    }
+    .similarity-grid-wrap{overflow:auto}
+    .similarity-grid{
+      display:grid;
+      gap:5px;
+      min-width:max-content;
+      align-items:stretch;
+    }
+    .similarity-axis,
+    .similarity-cell{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      min-height:38px;
+      padding:6px 7px;
+      border:1px solid rgba(148,163,184,.13);
+      border-radius:5px;
+      font-size:11px;
+      font-variant-numeric:tabular-nums;
+    }
+    .similarity-axis{background:rgba(15,23,42,.46);color:var(--muted);font-weight:650}
+    .similarity-axis.row-label{
+      justify-content:flex-start;
+      max-width:150px;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+    .similarity-cell{color:rgba(241,245,249,.94);background:rgba(255,138,31,var(--cell-alpha,.12))}
+    .similarity-cell.negative{background:rgba(96,165,250,var(--cell-alpha,.12))}
+    .similarity-legend{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-top:8px;
+      color:var(--muted2);
+      font-size:11px;
+    }
+    .similarity-gradient{
+      width:120px;
+      height:7px;
+      border-radius:999px;
+      background:linear-gradient(90deg,rgba(96,165,250,.65),rgba(148,163,184,.12),rgba(255,138,31,.72));
+    }
+    .vector-profile{margin-top:12px;padding-top:10px;border-top:1px solid rgba(148,163,184,.12)}
+    .vector-profile-head{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:7px;
+      color:var(--muted2);
+      font-size:11px;
+    }
+    .vector-profile svg{
+      display:block;
+      width:100%;
+      height:76px;
+      overflow:visible;
+      border:1px solid rgba(148,163,184,.12);
+      border-radius:5px;
+      background:rgba(2,6,23,.34);
+    }
+    .payload-details{margin-top:10px;border:1px solid var(--border);border-radius:6px;background:rgba(2,6,23,.20)}
+    .payload-details summary{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding:10px 11px;
+      color:var(--muted);
+      font-size:12px;
+      cursor:pointer;
+      user-select:none;
+    }
+    .payload-details[open] summary{border-bottom:1px solid rgba(148,163,184,.12)}
+    .payload-details pre{margin:10px;max-height:320px}
+    .projector-loading{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      min-height:220px;
+      padding:20px;
+      border:1px solid var(--border);
+      border-radius:8px;
+      background:var(--panel);
+      color:var(--muted);
+    }
+    .loading-dot{
+      width:10px;
+      height:10px;
+      flex:0 0 10px;
+      border-radius:999px;
+      background:var(--accent);
+      box-shadow:0 0 0 5px rgba(255,138,31,.14);
+      animation:pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes pulse{0%,100%{opacity:.42;transform:scale(.82)}50%{opacity:1;transform:scale(1)}}
+    @media (max-width:1180px){
+      .topbar{align-items:flex-start}
+      .metrics{grid-template-columns:repeat(2,1fr)}
+    }
+    @media (max-width:980px){
+      .app{display:block}
+      .sidebar{display:none}
+      .topbar{padding:10px 12px}
+      .topbar .chip.optional{display:none}
+      .content{padding:10px 10px 28px}
+      .mobile-nav{
+        position:sticky;
+        top:59px;
+        z-index:9;
+        display:flex;
+        gap:6px;
+        margin:0 0 12px;
+        padding:6px;
+        overflow-x:auto;
+        border:1px solid var(--border);
+        border-radius:8px;
+        background:rgba(2,6,23,.78);
+        backdrop-filter:blur(10px);
+      }
+      .mobile-tab{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:7px;
+        flex:1 0 auto;
+        padding:9px 11px;
+        border:1px solid transparent;
+        border-radius:6px;
+        background:transparent;
+        color:var(--muted);
+        font:600 12px/1 inherit;
+        cursor:pointer;
+      }
+      .mobile-tab.active{border-color:rgba(255,138,31,.24);background:rgba(255,138,31,.11);color:var(--text)}
+      .grid,.grid-2,.row,.row-3,.kv-grid{grid-template-columns:1fr}
+      .section,.section.projector-section{max-width:none}
+    }
+    @media (max-width:640px){
+      .topbar{align-items:center}
+      .topbar .chips{display:none}
+      .top-actions .btn span{display:none}
+      .section-head h1,.section-head h2{font-size:20px}
+      .metrics{grid-template-columns:1fr 1fr}
+      textarea{min-height:190px}
+    }
+    @media (prefers-reduced-motion:reduce){
+      *{transition:none!important}
+      .loading-dot{animation:none}
+    }
+  </style>
 </head>
 <body>
+  <svg class="icon-defs" aria-hidden="true" focusable="false">
+    <symbol id="i-embed" viewBox="0 0 24 24">
+      <circle cx="6" cy="12" r="2"/><circle cx="17" cy="6" r="2"/><circle cx="18" cy="17" r="2"/>
+      <path d="M8 11l7-4M8 13l8 3M17 8l1 7"/>
+    </symbol>
+    <symbol id="i-results" viewBox="0 0 24 24">
+      <path d="M5 19V9M12 19V5M19 19v-7M3 19h18"/>
+    </symbol>
+    <symbol id="i-projector" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="2"/><circle cx="5" cy="7" r="1.5"/><circle cx="18" cy="5" r="1.5"/><circle cx="19" cy="18" r="1.5"/>
+      <path d="M7 8l3.5 3M13.5 10.5L17 6.5M13.5 13.5l4 3.5"/>
+    </symbol>
+    <symbol id="i-admin" viewBox="0 0 24 24">
+      <path d="M4 7h10M18 7h2M4 17h2M10 17h10M14 4v6M7 14v6"/>
+    </symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24">
+      <path d="M7 4h7l4 4v12H7zM14 4v4h4M10 12h5M10 16h5"/>
+    </symbol>
+    <symbol id="i-health" viewBox="0 0 24 24">
+      <path d="M4 13h4l2-5 4 10 2-5h4"/>
+    </symbol>
+    <symbol id="i-run" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19 8V4l-2 2a7 7 0 10 1.5 9M19 4h-4"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><path d="M9 9h10v11H9zM6 16H5V5h11v1"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M8 11l4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-demo" viewBox="0 0 24 24"><path d="M5 19h14M7 16l3-8 3 5 2-7 2 10"/></symbol>
+    <symbol id="i-reload" viewBox="0 0 24 24"><path d="M18 8V4l-2 2a7 7 0 11-1-1M18 4h-4"/></symbol>
+    <symbol id="i-template" viewBox="0 0 24 24"><path d="M5 5h6v6H5zM13 5h6v6h-6zM5 13h6v6H5zM13 13h6v6h-6z"/></symbol>
+  </svg>
   <div class="app">
     <aside class="sidebar">
       <div class="brand">
@@ -337,51 +762,50 @@ def _build_index_html() -> str:
         </div>
       </div>
 
-      <nav class="nav">
-        <button type="button" class="nav-link active" data-tab="debug-section"><span class="dot"></span><span>调试台</span></button>
-        <button type="button" class="nav-link" data-tab="results-section"><span class="dot"></span><span>结果分析</span></button>
-        <button type="button" class="nav-link" data-tab="admin-section"><span class="dot"></span><span>运维管理</span></button>
-        <a class="nav-link" href="/projector"><span class="dot"></span><span>Projector 视图</span></a>
+      <nav class="nav" aria-label="主导航">
+        <button type="button" class="nav-link active" data-tab="debug-section"><svg class="icon" aria-hidden="true"><use href="#i-embed"></use></svg><span>调试台</span></button>
+        <button type="button" class="nav-link" data-tab="results-section"><svg class="icon" aria-hidden="true"><use href="#i-results"></use></svg><span>结果分析</span></button>
+        <button type="button" class="nav-link" data-tab="projector-section"><svg class="icon" aria-hidden="true"><use href="#i-projector"></use></svg><span>Projector 视图</span></button>
+        <button type="button" class="nav-link" data-tab="admin-section"><svg class="icon" aria-hidden="true"><use href="#i-admin"></use></svg><span>运维管理</span></button>
+        <a class="nav-link" href="/docs" target="_blank" rel="noreferrer"><svg class="icon" aria-hidden="true"><use href="#i-doc"></use></svg><span>API 文档</span></a>
+        <a class="nav-link" href="/health" target="_blank" rel="noreferrer"><svg class="icon" aria-hidden="true"><use href="#i-health"></use></svg><span>健康检查</span></a>
       </nav>
 
-      <div class="sidebar-card">
-        <h3>当前服务</h3>
-        <p>对外暴露 <span class="service-endpoints"><code>/v1/embeddings</code><code>/mcp</code><code>/health</code></span>。查询侧支持 Qwen instruction 注入，底层推理由容器内的 vLLM 子进程完成。</p>
-      </div>
-
-      <div class="sidebar-card">
-        <h3>调试建议</h3>
-        <ul>
-          <li>先看右上角和 Runtime 卡片里的 backend 状态。</li>
-          <li>若显示 <span class="inline-code">starting</span>，通常是模型仍在加载到 GPU。</li>
-          <li>页面默认会阻止在 backend 未就绪时发请求，避免长时间挂起。</li>
-        </ul>
+      <div class="sidebar-footer" aria-label="运行信息">
+        <div class="kv"><span class="k">Endpoint</span><span class="v">/v1/embeddings</span></div>
+        <div class="kv"><span class="k">MCP</span><span class="v">/mcp</span></div>
+        <div class="kv"><span class="k">Model</span><span class="v" id="sidebarModel">__MODEL_ID__</span></div>
+        <div class="kv"><span class="k">Device</span><span class="v" id="sidebarDevice">cuda</span></div>
+        <div class="kv"><span class="k">DType</span><span class="v" id="sidebarDtype">—</span></div>
       </div>
     </aside>
 
     <main class="main">
-      <div class="topbar">
-        <div class="crumbs"><strong>Qwen3 Embedding</strong><span>/</span><span>Web Debug Console</span></div>
-        <div class="chips">
-          <span class="chip" id="topModelChip">Model: __MODEL_ID__</span>
-          <span class="chip warn" id="topStatusChip">Backend: checking</span>
-          <span class="chip" id="topTimeChip">Server Time: --</span>
-          <span class="chip" id="topDeviceChip">Target: CUDA</span>
+      <header class="topbar">
+        <div class="crumbs"><span class="muted2">Services</span><span class="sep">/</span><strong id="activeViewLabel">Embedding 调试台</strong></div>
+        <div class="top-actions">
+          <div class="chips">
+            <span class="chip optional" id="topModelChip">Model: __MODEL_ID__</span>
+            <span class="chip warn" id="topStatusChip">Backend: checking</span>
+            <span class="chip optional" id="topDeviceChip">Target: CUDA</span>
+          </div>
+          <a class="btn ghost" href="/docs" target="_blank" rel="noreferrer"><svg class="icon" aria-hidden="true"><use href="#i-doc"></use></svg><span>Docs</span></a>
+          <a class="btn ghost" href="/redoc" target="_blank" rel="noreferrer"><svg class="icon" aria-hidden="true"><use href="#i-doc"></use></svg><span>Redoc</span></a>
         </div>
-      </div>
+      </header>
 
       <div class="content">
-        <div class="tabbar">
-          <button type="button" class="tab-btn active" data-tab="debug-section">调试台</button>
-          <button type="button" class="tab-btn" data-tab="results-section">结果分析</button>
-          <button type="button" class="tab-btn" data-tab="admin-section">运维管理</button>
-          <a class="tab-btn" href="/projector">Projector</a>
-        </div>
+        <nav class="mobile-nav" aria-label="移动端导航">
+          <button type="button" class="mobile-tab active" data-tab="debug-section"><svg class="icon" aria-hidden="true"><use href="#i-embed"></use></svg>调试台</button>
+          <button type="button" class="mobile-tab" data-tab="results-section"><svg class="icon" aria-hidden="true"><use href="#i-results"></use></svg>结果</button>
+          <button type="button" class="mobile-tab" data-tab="projector-section"><svg class="icon" aria-hidden="true"><use href="#i-projector"></use></svg>Projector</button>
+          <button type="button" class="mobile-tab" data-tab="admin-section"><svg class="icon" aria-hidden="true"><use href="#i-admin"></use></svg>运维</button>
+        </nav>
 
         <section class="section active tab-panel" id="debug-section">
           <div class="section-head">
             <h1>Embedding 调试台</h1>
-            <p>更接近参考 ASR 项目的交互形态：左侧导航、模板切换、状态面板、热重载表单，以及向量下载和相似度矩阵。你可以直接在这里完成大部分接入调试。</p>
+            <p>生成与检查文本向量，查看运行状态，并通过模板、向量下载和相似度矩阵完成接入调试。</p>
           </div>
 
           <div class="grid">
@@ -408,7 +832,7 @@ def _build_index_html() -> str:
                   </div>
                   <div>
                     <label>&nbsp;</label>
-                    <button class="btn secondary" id="applyTemplateBtn" style="width:100%">应用模板</button>
+                    <button class="btn secondary" id="applyTemplateBtn" style="width:100%"><svg class="icon" aria-hidden="true"><use href="#i-template"></use></svg>应用模板</button>
                   </div>
                 </div>
 
@@ -447,11 +871,11 @@ def _build_index_html() -> str:
                 </div>
 
                 <div class="actions">
-                  <button class="btn primary" id="runBtn">生成 Embedding</button>
-                  <button class="btn secondary" id="healthBtn">刷新状态</button>
-                  <button class="btn secondary" id="copyJsonBtn">复制 JSON</button>
-                  <button class="btn secondary" id="downloadBtn">下载向量</button>
-                  <button class="btn ghost" id="fillDemoBtn">填充 Demo</button>
+                  <button class="btn primary" id="runBtn"><svg class="icon" aria-hidden="true"><use href="#i-run"></use></svg>生成 Embedding</button>
+                  <button class="btn secondary" id="healthBtn"><svg class="icon" aria-hidden="true"><use href="#i-refresh"></use></svg>刷新状态</button>
+                  <button class="btn secondary" id="copyJsonBtn"><svg class="icon" aria-hidden="true"><use href="#i-copy"></use></svg>复制 JSON</button>
+                  <button class="btn secondary" id="downloadBtn"><svg class="icon" aria-hidden="true"><use href="#i-download"></use></svg>下载向量</button>
+                  <button class="btn ghost" id="fillDemoBtn"><svg class="icon" aria-hidden="true"><use href="#i-demo"></use></svg>填充 Demo</button>
                 </div>
               </div>
             </section>
@@ -483,10 +907,21 @@ def _build_index_html() -> str:
                   <div class="kv-item"><span>设备目标</span><strong id="healthDeviceChip">cuda</strong></div>
                 </div>
 
-                <div style="margin-top:16px">
-                  <label>Health Payload</label>
-                  <pre id="healthOut">loading...</pre>
+                <div class="embedding-viz" aria-live="polite">
+                  <div class="embedding-viz-head">
+                    <div>
+                      <div class="embedding-viz-title">Embedding 可视化</div>
+                      <div class="embedding-viz-subtitle">余弦相似度与首个向量的维度采样轮廓</div>
+                    </div>
+                    <span class="pill">cosine</span>
+                  </div>
+                  <div id="similarityHeatmap" class="similarity-empty">生成 Embedding 后在这里显示语义关系。</div>
                 </div>
+
+                <details class="payload-details">
+                  <summary><span>Health Payload</span><span class="muted2">JSON</span></summary>
+                  <pre id="healthOut">loading...</pre>
+                </details>
               </div>
             </section>
           </div>
@@ -552,6 +987,19 @@ def _build_index_html() -> str:
           </div>
         </section>
 
+        <section class="section projector-section tab-panel" id="projector-section">
+          <div class="section-head">
+            <h2>Embedding Projector</h2>
+            <p>在三维空间中观察文本向量分布，并联动检查选中点、最近邻和投影元数据。</p>
+          </div>
+          <div id="projector-root">
+            <div class="projector-loading" id="projectorLoading">
+              <span class="loading-dot" aria-hidden="true"></span>
+              <span>首次打开时加载 Projector 可视化模块。</span>
+            </div>
+          </div>
+        </section>
+
         <section class="section tab-panel" id="admin-section">
           <div class="grid">
             <section class="card">
@@ -601,7 +1049,7 @@ def _build_index_html() -> str:
                 </div>
 
                 <div class="actions">
-                  <button class="btn primary" id="reloadBtn">提交热重载</button>
+                  <button class="btn primary" id="reloadBtn"><svg class="icon" aria-hidden="true"><use href="#i-reload"></use></svg>提交热重载</button>
                 </div>
 
                 <div style="margin-top:16px">
@@ -621,9 +1069,9 @@ def _build_index_html() -> str:
                 </div>
                 <ul class="api-list">
                   <li><code>POST /v1/embeddings</code><p>OpenAI 兼容 Embeddings 接口</p></li>
-                  <li><code>POST /v1/embeddings/projector</code><p>后端预计算 2D 投影 + 近邻，供 Projector 视图渲染</p></li>
+                  <li><code>POST /v1/embeddings/projector</code><p>后端预计算 3D 投影 + 近邻，供 Projector 视图渲染</p></li>
                   <li><code>GET /</code><p>内置调试页面</p></li>
-                  <li><code>GET /projector</code><p>Projector 点云交互页面</p></li>
+                  <li><code>GET /projector</code><p>兼容入口，跳转到主页 Projector 页签</p></li>
                   <li><code>POST/GET /mcp</code><p>MCP Streamable HTTP 入口</p></li>
                   <li><code>GET /health</code><p>运行状态与 backend 聚合健康</p></li>
                   <li><code>GET /docs</code> / <code>GET /redoc</code><p>Swagger 与 ReDoc 文档</p></li>
@@ -712,14 +1160,18 @@ def _build_index_html() -> str:
       metricDim: document.getElementById("metricDim"),
       metricLatency: document.getElementById("metricLatency"),
       metricState: document.getElementById("metricState"),
+      similarityHeatmap: document.getElementById("similarityHeatmap"),
       healthOut: document.getElementById("healthOut"),
       summaryOut: document.getElementById("summaryOut"),
       rawOut: document.getElementById("rawOut"),
       matrixTable: document.getElementById("matrixTable"),
       topModelChip: document.getElementById("topModelChip"),
       topStatusChip: document.getElementById("topStatusChip"),
-      topTimeChip: document.getElementById("topTimeChip"),
       topDeviceChip: document.getElementById("topDeviceChip"),
+      activeViewLabel: document.getElementById("activeViewLabel"),
+      sidebarModel: document.getElementById("sidebarModel"),
+      sidebarDevice: document.getElementById("sidebarDevice"),
+      sidebarDtype: document.getElementById("sidebarDtype"),
       healthModelChip: document.getElementById("healthModelChip"),
       healthDeviceChip: document.getElementById("healthDeviceChip"),
       reloadModelId: document.getElementById("reloadModelId"),
@@ -734,6 +1186,41 @@ def _build_index_html() -> str:
     };
     const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
     const tabControls = Array.from(document.querySelectorAll("[data-tab]"));
+    const viewLabels = {
+      "debug-section": "Embedding 调试台",
+      "results-section": "结果分析",
+      "projector-section": "Embedding Projector",
+      "admin-section": "运维管理",
+    };
+    let projectorModulePromise = null;
+    let projectorMounted = false;
+
+    async function ensureProjectorMounted() {
+      const root = document.getElementById("projector-root");
+      if (!root) return;
+      try {
+        if (!projectorModulePromise) {
+          projectorModulePromise = import("/projector-static/projector.js");
+        }
+        await projectorModulePromise;
+        const projectorApi = window.qwenEmbeddingProjector;
+        if (!projectorApi) {
+          throw new Error("Projector module did not register its browser API.");
+        }
+        if (!projectorMounted) {
+          projectorApi.mountProjector(root);
+          projectorMounted = true;
+        }
+        requestAnimationFrame(() => projectorApi.resizeProjector());
+      } catch (error) {
+        projectorModulePromise = null;
+        root.innerHTML = "";
+        const message = document.createElement("div");
+        message.className = "projector-loading";
+        message.textContent = `Projector 模块加载失败：${error}`;
+        root.appendChild(message);
+      }
+    }
 
     function setActiveTab(tabId, syncHash = true) {
       const targetId = tabPanels.some(panel => panel.id === tabId) ? tabId : "debug-section";
@@ -742,8 +1229,15 @@ def _build_index_html() -> str:
         panel.classList.toggle("active", panel.id === targetId);
       });
       tabControls.forEach((control) => {
-        control.classList.toggle("active", control.dataset.tab === targetId);
+        const isActive = control.dataset.tab === targetId;
+        control.classList.toggle("active", isActive);
+        control.setAttribute("aria-current", isActive ? "page" : "false");
       });
+      els.activeViewLabel.textContent = viewLabels[targetId] || "Qwen3 Embedding";
+
+      if (targetId === "projector-section") {
+        void ensureProjectorMounted();
+      }
 
       if (syncHash) {
         history.replaceState(null, "", `#${targetId}`);
@@ -774,6 +1268,7 @@ def _build_index_html() -> str:
     }
 
     function cosineSimilarity(a, b) {
+      if (!Array.isArray(a) || !Array.isArray(b)) return null;
       let dot = 0;
       let normA = 0;
       let normB = 0;
@@ -810,6 +1305,136 @@ def _build_index_html() -> str:
       });
       body += "</tbody>";
       els.matrixTable.innerHTML = header + body;
+    }
+
+    function setSimilarityEmpty(message) {
+      els.similarityHeatmap.className = "similarity-empty";
+      els.similarityHeatmap.replaceChildren();
+      const text = document.createElement("span");
+      text.textContent = message;
+      els.similarityHeatmap.appendChild(text);
+    }
+
+    function renderVectorProfile(vector, container) {
+      const sampleCount = Math.min(96, vector.length);
+      if (!sampleCount) return;
+      const sampled = Array.from({length: sampleCount}, (_, index) => {
+        const sourceIndex = sampleCount === 1
+          ? 0
+          : Math.round((index / (sampleCount - 1)) * (vector.length - 1));
+        return Number(vector[sourceIndex]) || 0;
+      });
+      const maxAbs = Math.max(...sampled.map((value) => Math.abs(value)), 1e-9);
+      const points = sampled.map((value, index) => {
+        const x = sampleCount === 1 ? 300 : (index / (sampleCount - 1)) * 600;
+        const y = 38 - (value / maxAbs) * 27;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      }).join(" ");
+
+      const profile = document.createElement("div");
+      profile.className = "vector-profile";
+      const head = document.createElement("div");
+      head.className = "vector-profile-head";
+      const title = document.createElement("span");
+      title.textContent = "Vector #1 维度轮廓";
+      const meta = document.createElement("span");
+      meta.textContent = `${sampleCount} 个等距采样点 / ${vector.length} 维`;
+      head.append(title, meta);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 600 76");
+      svg.setAttribute("preserveAspectRatio", "none");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", "首个 Embedding 向量的维度采样轮廓");
+      const baseline = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      baseline.setAttribute("x1", "0");
+      baseline.setAttribute("x2", "600");
+      baseline.setAttribute("y1", "38");
+      baseline.setAttribute("y2", "38");
+      baseline.setAttribute("stroke", "rgba(148,163,184,.22)");
+      const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+      polyline.setAttribute("points", points);
+      polyline.setAttribute("fill", "none");
+      polyline.setAttribute("stroke", "#ff8a1f");
+      polyline.setAttribute("stroke-width", "1.7");
+      polyline.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.append(baseline, polyline);
+      profile.append(head, svg);
+      container.appendChild(profile);
+    }
+
+    function renderSimilarityVisualization(payload) {
+      const data = Array.isArray(payload?.data) ? payload.data.slice(0, 8) : [];
+      if (!data.length) {
+        setSimilarityEmpty("当前没有可视化的向量结果。");
+        return;
+      }
+      const vectors = data.map((item) => item.embedding);
+      if (!vectors.every(Array.isArray)) {
+        setSimilarityEmpty("base64 编码结果无法直接计算相似度；请将 Encoding Format 切换为 float。");
+        return;
+      }
+
+      const texts = splitTexts(els.texts.value);
+      els.similarityHeatmap.className = "";
+      els.similarityHeatmap.replaceChildren();
+
+      const wrap = document.createElement("div");
+      wrap.className = "similarity-grid-wrap";
+      const grid = document.createElement("div");
+      grid.className = "similarity-grid";
+      grid.style.gridTemplateColumns = `minmax(120px, 1.4fr) repeat(${data.length}, minmax(52px, 1fr))`;
+      grid.style.minWidth = `${120 + data.length * 52}px`;
+
+      const corner = document.createElement("div");
+      corner.className = "similarity-axis row-label";
+      corner.textContent = `前 ${data.length} 条文本`;
+      grid.appendChild(corner);
+      data.forEach((_, index) => {
+        const header = document.createElement("div");
+        header.className = "similarity-axis";
+        header.textContent = `#${index + 1}`;
+        grid.appendChild(header);
+      });
+
+      data.forEach((row, rowIndex) => {
+        const rowLabel = document.createElement("div");
+        rowLabel.className = "similarity-axis row-label";
+        const rowText = texts[rowIndex] || `item ${rowIndex + 1}`;
+        rowLabel.textContent = `#${rowIndex + 1} ${rowText}`;
+        rowLabel.title = rowText;
+        grid.appendChild(rowLabel);
+
+        data.forEach((col, colIndex) => {
+          const similarity = cosineSimilarity(row.embedding, col.embedding);
+          const cell = document.createElement("div");
+          cell.className = "similarity-cell";
+          if (similarity === null || !Number.isFinite(similarity)) {
+            cell.textContent = "-";
+            cell.style.setProperty("--cell-alpha", ".06");
+          } else {
+            const strength = Math.min(1, Math.abs(similarity));
+            cell.textContent = similarity.toFixed(3);
+            cell.style.setProperty("--cell-alpha", (0.08 + strength * 0.62).toFixed(3));
+            cell.classList.toggle("negative", similarity < 0);
+            cell.title = `#${rowIndex + 1} ↔ #${colIndex + 1}: ${similarity.toFixed(6)}`;
+          }
+          grid.appendChild(cell);
+        });
+      });
+
+      wrap.appendChild(grid);
+      const legend = document.createElement("div");
+      legend.className = "similarity-legend";
+      const low = document.createElement("span");
+      low.textContent = "低相似 / 负相关";
+      const gradient = document.createElement("span");
+      gradient.className = "similarity-gradient";
+      const high = document.createElement("span");
+      high.textContent = "高相似";
+      legend.append(low, gradient, high);
+      els.similarityHeatmap.append(wrap, legend);
+      renderVectorProfile(vectors[0], els.similarityHeatmap);
     }
 
     function summarizeResponse(payload, latencyMs) {
@@ -889,8 +1514,10 @@ def _build_index_html() -> str:
         els.healthModelChip.textContent = payload.model_id || "-";
         els.healthDeviceChip.textContent = payload.backend_target_device || "cuda";
         els.topModelChip.textContent = `Model: ${payload.model_id || "-"}`;
-        els.topTimeChip.textContent = `Server Time: ${payload.server_time || "--"}`;
         els.topDeviceChip.textContent = `Target: ${payload.backend_target_device || "cuda"}`;
+        els.sidebarModel.textContent = payload.model_id || "-";
+        els.sidebarDevice.textContent = payload.backend_target_device || "cuda";
+        els.sidebarDtype.textContent = payload.dtype || "-";
         els.metricState.textContent = payload.backend_state || "-";
         const message = payload.backend_last_error || `Backend ${payload.backend_state || "unknown"}`;
         if (payload.backend_ready) {
@@ -931,6 +1558,7 @@ def _build_index_html() -> str:
       clearError();
       els.runBtn.disabled = true;
       setStatus("warn", "requesting");
+      setSimilarityEmpty("正在生成并计算向量关系...");
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
       const startedAt = performance.now();
@@ -957,6 +1585,7 @@ def _build_index_html() -> str:
           els.rawOut.textContent = JSON.stringify(result, null, 2);
           els.summaryOut.textContent = "请求失败。";
           renderMatrix(null);
+          setSimilarityEmpty("请求失败，暂无可视化结果。");
           return;
         }
 
@@ -969,6 +1598,7 @@ def _build_index_html() -> str:
         els.summaryOut.textContent = summarizeResponse(result, latencyMs);
         els.rawOut.textContent = JSON.stringify(result, null, 2);
         renderMatrix(result);
+        renderSimilarityVisualization(result);
         setStatus("ok", "embedding completed");
         await refreshHealth();
       } catch (error) {
@@ -979,6 +1609,7 @@ def _build_index_html() -> str:
           showError(`Request failed: ${error}`);
           setStatus("bad", "request failed");
         }
+        setSimilarityEmpty("请求失败，暂无可视化结果。");
       } finally {
         clearTimeout(timer);
         els.runBtn.disabled = false;
@@ -1035,6 +1666,9 @@ def _build_index_html() -> str:
         setActiveTab(control.dataset.tab || "debug-section");
       });
     });
+    window.addEventListener("hashchange", () => {
+      setActiveTab(window.location.hash.replace("#", "") || "debug-section", false);
+    });
 
     setActiveTab(window.location.hash.replace("#", "") || "debug-section", false);
     applyTemplate("retrieval_pair");
@@ -1083,19 +1717,9 @@ def create_application() -> FastAPI:
     def index() -> str:
         return _build_index_html()
 
-    @app.get("/projector", response_class=HTMLResponse)
-    def projector_index():
-        projector_index_path = os.path.join(projector_dist_dir, "index.html")
-        if os.path.isfile(projector_index_path):
-            return FileResponse(projector_index_path)
-        return HTMLResponse(
-            (
-                "<h2>Projector frontend not built yet.</h2>"
-                "<p>Run <code>npm install && npm run build</code> under <code>frontend/</code>, "
-                "or rebuild the Docker image to generate <code>/projector</code> assets.</p>"
-            ),
-            status_code=503,
-        )
+    @app.get("/projector", response_class=RedirectResponse)
+    def projector_index() -> RedirectResponse:
+        return RedirectResponse(url="/#projector-section", status_code=307)
 
     @app.get("/health")
     async def health() -> JSONResponse:

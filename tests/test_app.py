@@ -4,6 +4,27 @@ import app
 import embedding_service
 
 
+def test_index_html_contains_unified_navigation_and_projector_mount():
+    html = app._build_index_html()
+
+    assert 'data-tab="projector-section"' in html
+    assert 'id="projector-root"' in html
+    assert 'href="/projector-static/projector.css"' in html
+    assert 'import("/projector-static/projector.js")' in html
+    assert 'id="activeViewLabel"' in html
+    assert 'id="similarityHeatmap"' in html
+    assert 'class="payload-details"' in html
+    assert 'id="topTimeChip"' not in html
+
+
+def test_projector_page_redirects_to_embedded_tab():
+    with TestClient(app.create_application(), follow_redirects=False) as client:
+        response = client.get("/projector")
+
+    assert response.status_code == 307
+    assert response.headers["location"] == "/#projector-section"
+
+
 def test_embeddings_route_returns_openai_shape(monkeypatch):
     async def fake_create_embeddings(payload):
         assert payload["input_type"] == "query"

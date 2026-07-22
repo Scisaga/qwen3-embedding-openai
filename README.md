@@ -7,16 +7,17 @@
 - 代码仓库：[`https://github.com/Scisaga/qwen3-embedding-openai`](https://github.com/Scisaga/qwen3-embedding-openai)
 - 镜像仓库（GHCR）：`ghcr.io/scisaga/qwen3-embedding-openai:latest`
 
-![Embedding 调试台](img/README-1774100138637.png)
-![Projector 可视化](img/README-1774100196470.png)
+![Embedding 调试台](img/README-1784748312813.png)
+![Projector 可视化](img/README-1784748365784.png)
 
 ## 功能
 - OpenAI 兼容 Embeddings API：`POST /v1/embeddings`
 - 3D Projector API：`POST /v1/embeddings/projector`（后端预计算 3D 投影 + 近邻）
 - Qwen 检索增强字段：`input_type=query|document`、`instruction`
 - MCP Server：HTTP 挂载到 `POST/GET /mcp`（Streamable HTTP）
-- 内置 Web UI：`GET /`（调试台、结果分析、运维管理）
-- Projector 视图：`GET /projector`（3D 点云、原点连线、箭头、坐标轴、近邻联动）
+- 内置 Web UI：`GET /`（调试台、结果分析、Projector、运维管理）
+- 调试台结果可视化：直接展示余弦相似度热力图与首个向量的维度采样轮廓
+- Projector 视图：`GET /#projector-section`（3D 点云、原点连线、箭头、坐标轴、近邻联动）；`GET /projector` 保留为兼容跳转
 - 交互式接口文档：`GET /docs`（Swagger UI）与 `GET /redoc`
 - 模型自动下载与缓存：将 `./models` 挂载到容器 `/models`（Hugging Face 缓存目录）
 - 运维友好：健康检查 `GET /health`；可选热重载 `POST /admin/reload`（`ADMIN_TOKEN` 保护）
@@ -39,7 +40,7 @@ HTTP_PROXY=http://127.0.0.1:7890
 
 打开：
 - Web UI：http://localhost:12302/
-- Projector：http://localhost:12302/projector
+- Projector：http://localhost:12302/#projector-section
 - MCP HTTP：http://localhost:12302/mcp
 - 接口文档（Swagger）：http://localhost:12302/docs
 - 接口文档（ReDoc）：http://localhost:12302/redoc
@@ -156,6 +157,7 @@ http://localhost:12302/v1/embeddings
   - 投影参数：`projection_method=umap|tsne|pca`、`metric=cosine|euclidean`、`neighbors_k`、`point_size`
   - 返回：`points`（3D 坐标 + 文本元数据）、`neighbors`、`projection_meta`、`usage`
 - `POST /mcp` / `GET /mcp`：MCP Streamable HTTP 入口
+- `GET /`：统一 Web 控制台；`GET /projector` 会跳转到其中的 Projector 页签
 - `GET /docs` / `GET /redoc`：交互式接口文档
 - `GET /openapi.json`：OpenAPI 规范 JSON
 - `GET /health`：健康检查与运行参数
@@ -245,12 +247,13 @@ VLLM_EXTRA_ARGS: "--tensor-parallel-size 2"
 
 ## Projector 说明
 - 前端采用 `Vite + Plotly`（目录：`frontend/`）
-- Docker 构建会自动打包前端并复制到 `static/projector`，正常 `docker compose up -d --build` 后可直接访问 `/projector`
+- Docker 构建会自动打包前端并复制到 `static/projector`；Projector 模块在首次打开主页对应页签时按需加载
+- 旧地址 `/projector` 会临时跳转到 `/#projector-section`
 - 当前可视化为 3D 点云，包含：
   - 点编号标签
   - 原点及原点到各点连线与箭头
   - 三维坐标轴（X 红 / Y 绿 / Z 蓝）
-  - 点击点后右侧展示近邻
+  - 点击点后在下方分析卡片中展示近邻
 
 本地前端开发：
 
